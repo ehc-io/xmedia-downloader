@@ -14,8 +14,8 @@ const { chromium } = require('playwright');
 
 // Configuration variables
 const PAGE_LOAD_TIMEOUT = 3000;
-const LOGIN_WAIT_TIMEOUT = 60000;
-const FORM_INTERACTION_DELAY = 1500;
+const LOGIN_WAIT_TIMEOUT = 15000;
+const FORM_INTERACTION_DELAY = 3000;
 const SELECTOR_TIMEOUT = 3000;
 // const TWEET_WAIT_TIMEOUT = 2000;
 
