@@ -86,6 +86,10 @@ COPY --from=builder /root/.cache/ms-playwright /home/appuser/.cache/ms-playwrigh
 COPY --from=builder /usr/bin/node /usr/bin/node
 COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
 
+# Copy the entrypoint script and make it executable
+COPY entrypoint.sh /usr/local/bin/
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
 # Create directories for output and session data
 RUN mkdir -p /app/downloads /app/session-data && \
     chown -R appuser:appuser /app /home/appuser
@@ -114,7 +118,15 @@ VOLUME ["/app/downloads", "/app/session-data"]
 #     xmedia-downloader \
 #     --url "https://x.com/user/status/1234567890" \
 #     --verbose
-ENTRYPOINT ["python3", "xmedia_downloader.py"]
+#
+# To force a session refresh:
+#   docker run --rm -it \
+#     -e X_USERNAME="YOUR_USERNAME" \
+#     -e X_PASSWORD="YOUR_PASSWORD" \
+#     -v "$(pwd)/session-data:/app/session-data" \
+#     xmedia-downloader \
+#     refresh-session
+ENTRYPOINT ["entrypoint.sh"]
 
 # Default command shows the help message if no other command is provided.
 CMD ["--help"]
