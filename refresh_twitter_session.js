@@ -13,10 +13,10 @@ const path = require('path');
 const { chromium } = require('playwright');
 
 // Configuration variables
-const PAGE_LOAD_TIMEOUT = 3000;
-const LOGIN_WAIT_TIMEOUT = 15000;
-const FORM_INTERACTION_DELAY = 3000;
-const SELECTOR_TIMEOUT = 3000;
+const PAGE_LOAD_TIMEOUT = process.env.PAGE_LOAD_TIMEOUT ? parseInt(process.env.PAGE_LOAD_TIMEOUT, 10) : 3000;
+const LOGIN_WAIT_TIMEOUT = process.env.LOGIN_WAIT_TIMEOUT ? parseInt(process.env.LOGIN_WAIT_TIMEOUT, 10) : 15000;
+const FORM_INTERACTION_DELAY = process.env.FORM_INTERACTION_DELAY ? parseInt(process.env.FORM_INTERACTION_DELAY, 10) : 3000;
+const SELECTOR_TIMEOUT = process.env.SELECTOR_TIMEOUT ? parseInt(process.env.SELECTOR_TIMEOUT, 10) : 3000;
 // const TWEET_WAIT_TIMEOUT = 2000;
 
 // Control whether to take login screenshots

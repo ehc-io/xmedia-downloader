@@ -12,12 +12,14 @@ X Media Downloader is a web service for downloading videos and images from indiv
 - **URL Validation**: Validates Twitter/X URLs before processing
 - **Descriptive Filenames**: Saves media with structured filenames including date, time, and username
 - **Debug Logging**: Configurable logging levels for troubleshooting
-- **Dockerized**: Runs entirely within a Docker container with persistent data volumes
+- **Dockerized**: Runs entirely within a Docker container
+- **Google Cloud Storage Integration**: All session data, screenshots, and media files are stored in a GCS bucket
 
 ## Prerequisites
 
 - [Docker](https://www.docker.com/get-started) installed and running
 - A Twitter/X account with username and password
+- A Google Cloud Storage bucket (with the VM's service account having read/write access)
 
 ## Quick Start
 
@@ -37,11 +39,9 @@ X Media Downloader is a web service for downloading videos and images from indiv
    docker run -d \
      --name xmedia-downloader \
      -p 8080:8080 \
-     -v "$(pwd)/downloads:/app/downloads" \
-     -v "$(pwd)/session-data:/app/session-data" \
-     -v "$(pwd)/screenshots:/app/screenshots" \
      -e X_USERNAME="your_twitter_username" \
      -e X_PASSWORD="your_twitter_password" \
+     -e GCS_BUCKET_NAME="your-gcs-bucket-name" \
      xmedia-downloader
    ```
 
@@ -92,7 +92,7 @@ curl -X GET http://localhost:8080/session-status
 {
   "session_file_exists": true,
   "session_valid": true,
-  "session_path": "/app/session-data/session.json"
+  "session_path": "x-session.json (in GCS bucket)"
 }
 ```
 
@@ -106,33 +106,21 @@ curl -X GET http://localhost:8080/session-status
 | `LOG_LEVEL` | `INFO` | Logging level (`INFO` or `DEBUG`) |
 | `X_USERNAME` | *Required* | Twitter/X username |
 | `X_PASSWORD` | *Required* | Twitter/X password |
-| `OUTPUT_DIR` | `./downloads` | Media download directory |
-| `SESSION_DIR` | `./session-data` | Session storage directory |
+| `GCS_BUCKET_NAME` | *Required* | Google Cloud Storage bucket for all persistent data |
+| `PAGE_LOAD_TIMEOUT` | `3000` | (ms) Page load timeout for session refresh script |
+| `LOGIN_WAIT_TIMEOUT` | `15000` | (ms) Login wait timeout for session refresh script |
+| `FORM_INTERACTION_DELAY` | `3000` | (ms) Delay for form interactions in session refresh script |
+| `SELECTOR_TIMEOUT` | `3000` | (ms) Selector wait timeout for session refresh script |
 
-### Docker Run Examples
+### Docker Run Example
 
-**Basic Usage:**
 ```bash
 docker run -d \
   --name xmedia-downloader \
   -p 8080:8080 \
-  -v "$(pwd)/downloads:/app/downloads" \
-  -v "$(pwd)/session-data:/app/session-data" \
   -e X_USERNAME="your_username" \
   -e X_PASSWORD="your_password" \
-  xmedia-downloader
-```
-
-**Custom Port:**
-```bash
-docker run -d \
-  --name xmedia-downloader \
-  -p 3000:3000 \
-  -v "$(pwd)/downloads:/app/downloads" \
-  -v "$(pwd)/session-data:/app/session-data" \
-  -e PORT=3000 \
-  -e X_USERNAME="your_username" \
-  -e X_PASSWORD="your_password" \
+  -e GCS_BUCKET_NAME="your-gcs-bucket-name" \
   xmedia-downloader
 ```
 
@@ -141,32 +129,32 @@ docker run -d \
 docker run -d \
   --name xmedia-downloader \
   -p 8080:8080 \
-  -v "$(pwd)/downloads:/app/downloads" \
-  -v "$(pwd)/session-data:/app/session-data" \
-  -v "$(pwd)/screenshots:/app/screenshots" \
   -e LOG_LEVEL=DEBUG \
   -e X_USERNAME="your_username" \
   -e X_PASSWORD="your_password" \
+  -e GCS_BUCKET_NAME="your-gcs-bucket-name" \
   xmedia-downloader
 ```
 
-## Volume Mounts
+## Persistent Storage (GCS)
 
-| Host Path | Container Path | Purpose |
-|-----------|----------------|---------|
-| `./downloads` | `/app/downloads` | Downloaded media files |
-| `./session-data` | `/app/session-data` | Authentication session storage |
-| `./screenshots` | `/app/screenshots` | Login process screenshots (debug) |
+All persistent data (session file, screenshots, downloaded media) is stored in the specified Google Cloud Storage bucket. There is no need to mount local volumes for these files.
+
+| GCS Path Prefix | Purpose |
+|-----------------|---------|
+| `x-session.json` | Authentication session storage |
+| `screenshots/` | Login process and tweet screenshots |
+| `media/` | Downloaded media files |
 
 ## How It Works
 
 The service orchestrates several components:
 
 1. **Web Server**: Flask-based REST API that handles incoming requests
-2. **Session Manager**: Maintains Twitter/X authentication sessions with automatic refresh
-3. **Content Extractor**: Uses Playwright to scrape tweet metadata for filename generation
+2. **Session Manager**: Maintains Twitter/X authentication sessions with automatic refresh, storing session in GCS
+3. **Content Extractor**: Uses Playwright to scrape tweet metadata and upload screenshots to GCS
 4. **API Client**: Leverages authenticated sessions to call Twitter's internal APIs
-5. **Media Downloader**: Downloads and saves media files with descriptive names
+5. **Media Downloader**: Downloads and uploads media files directly to GCS
 6. **Asynchronous Processing**: Background threads handle time-consuming operations
 
 ## Workflow
@@ -175,9 +163,10 @@ The service orchestrates several components:
 2. **URL Validation**: Validates the provided URL format
 3. **Immediate Response**: Returns 202 status confirming request acceptance
 4. **Background Processing**: 
-   - Validates/refreshes authentication session
+   - Validates/refreshes authentication session (session file in GCS)
    - Extracts tweet metadata and media URLs
-   - Downloads media files to mounted volume
+   - Downloads media files and uploads to GCS
+   - Captures and uploads screenshots to GCS
 5. **Logging**: All operations logged for monitoring and debugging
 
 ## Supported URL Formats

@@ -3,3 +3,4 @@ legacy/**
 screenshots/**
 session-data/**
 downloads/**
+.DS_Store

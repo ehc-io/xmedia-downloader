@@ -6,6 +6,7 @@ import os
 import logging
 from pathlib import Path
 from playwright.sync_api import sync_playwright, Error as PlaywrightError
+from gcs_client import GCSClient
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -13,10 +14,12 @@ logger = logging.getLogger(__name__)
 class TwitterSessionManager:
     """Manages Twitter authentication session validation and refresh."""
 
-    def __init__(self, session_dir="session-data", session_file="session.json"):
+    def __init__(self, session_dir="session-data", session_file="x-session.json"):
         self.session_dir = Path(session_dir)
         self.session_file = session_file
         self.session_path = self.session_dir / self.session_file
+        self.gcs_client = GCSClient()
+        self.gcs_session_blob_name = self.session_file
         self._ensure_session_dir_exists()
 
     def _ensure_session_dir_exists(self):
@@ -68,6 +71,14 @@ class TwitterSessionManager:
                  logger.error(f"Session refresh script ran but session file '{self.session_path}' was not created.")
                  return False
 
+            try:
+                logger.info(f"Uploading refreshed session to GCS as '{self.gcs_session_blob_name}'...")
+                self.gcs_client.upload_file(str(self.session_path), self.gcs_session_blob_name)
+                logger.info("Session successfully uploaded to GCS.")
+            except Exception as e:
+                logger.error(f"Failed to upload session file to GCS: {e}")
+                return False
+
             logger.info("Session data refreshed successfully by Node.js script.")
             return True
         except FileNotFoundError:
@@ -79,8 +90,16 @@ class TwitterSessionManager:
 
     def _is_session_valid_playwright(self) -> bool:
         """Checks if the session stored in the file is currently valid using Playwright."""
-        if not self.session_path.exists():
-            logger.info("Session file does not exist.")
+        logger.info(f"Checking for session file '{self.gcs_session_blob_name}' in GCS bucket.")
+        if not self.gcs_client.blob_exists(self.gcs_session_blob_name):
+            logger.info("Session file does not exist in GCS.")
+            return False
+
+        try:
+            logger.info(f"Downloading session file from GCS to '{self.session_path}'...")
+            self.gcs_client.download_file(self.gcs_session_blob_name, str(self.session_path))
+        except Exception as e:
+            logger.error(f"Failed to download session file from GCS: {e}")
             return False
 
         logger.info("Verifying session validity using Playwright...")

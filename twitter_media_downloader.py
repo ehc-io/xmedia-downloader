@@ -7,6 +7,8 @@ from pathlib import Path
 import requests
 from tqdm import tqdm
 
+from gcs_client import GCSClient
+
 # --- Logger Setup ---
 logger = logging.getLogger(__name__)
 
@@ -19,6 +21,7 @@ class TwitterMediaDownloader:
     def __init__(self, output_dir: str):
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(parents=True, exist_ok=True)
+        self.gcs_client = GCSClient()
         self.session = requests.Session()
         # Use a common browser user agent
         self.session.headers.update({
@@ -61,32 +64,29 @@ class TwitterMediaDownloader:
         for i, item in enumerate(media_items):
             url = item['url']
             filename = self._generate_filename(tweet_details, tweet_id, url, i)
+            
+            # The local save path is now just for temporary reference if needed,
+            # the primary destination is GCS.
             save_path = self.output_dir / filename
-            
-            logger.info(f"Downloading {item['type']} from {url} to {save_path}")
-            
+            gcs_blob_name = f"media/{filename}"
+
+            logger.info(f"Downloading {item['type']} from {url} to GCS at '{gcs_blob_name}'")
+
             try:
                 response = self.session.get(url, stream=True, timeout=30)
                 response.raise_for_status()
 
-                total_size = int(response.headers.get('content-length', 0))
+                # Upload directly to GCS without saving locally first
+                self.gcs_client.bucket.blob(gcs_blob_name).upload_from_file(
+                    response.raw,
+                    content_type=response.headers.get('content-type')
+                )
 
-                with open(save_path, 'wb') as f, tqdm(
-                    desc=filename,
-                    total=total_size,
-                    unit='iB',
-                    unit_scale=True,
-                    unit_divisor=1024,
-                ) as bar:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        size = f.write(chunk)
-                        bar.update(size)
-                
-                downloaded_files.append(save_path)
-                logger.info(f"Successfully downloaded {save_path}")
+                downloaded_files.append(gcs_blob_name)
+                logger.info(f"Successfully uploaded to {gcs_blob_name}")
             except requests.exceptions.RequestException as e:
                 logger.error(f"Failed to download {url}: {e}")
             except Exception as e:
-                logger.error(f"An unexpected error occurred while downloading {url}: {e}")
+                logger.error(f"An unexpected error occurred while uploading {url}: {e}")
 
         return downloaded_files

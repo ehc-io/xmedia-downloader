@@ -5,6 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright, Page, BrowserContext, Error as PlaywrightError
 from typing import Dict, Any, Optional
+from gcs_client import GCSClient
 
 logger = logging.getLogger(__name__)
 
@@ -15,6 +16,7 @@ class TweetExtractor:
     """
     def __init__(self, session_path: str):
         self.session_path = Path(session_path)
+        self.gcs_client = GCSClient()
         if not self.session_path.is_file():
             # Correctly handle the case where session_path is a string representation of a Path
             self.session_path = Path(str(session_path))
@@ -52,6 +54,7 @@ class TweetExtractor:
                     if not tweet_article:
                         return {"error": "Could not find the main tweet element on the page."}
 
+                    screenshot_path = self.take_screenshot(page, tweet_url)
                     # Extract user handle
                     # This selector targets the element containing the '@handle'
                     user_handle_selector = 'div[data-testid="User-Name"] a > div > span'
@@ -73,6 +76,7 @@ class TweetExtractor:
                         "user_handle": user_handle,
                         "timestamp": timestamp_unix, # Unix timestamp in seconds
                         "tweet_url": tweet_url,
+                        "screenshot_path": screenshot_path,
                         "error": None
                     }
                     
@@ -90,6 +94,30 @@ class TweetExtractor:
         except Exception as e:
             logger.error(f"An unexpected error occurred in TweetExtractor: {e}", exc_info=True)
             return {"error": str(e)}
+
+    def take_screenshot(self, page: Page, tweet_url: str) -> Optional[str]:
+        """Takes a screenshot of the tweet and uploads it to GCS."""
+        try:
+            tweet_id = self.extract_tweet_id_from_url(tweet_url)
+            if not tweet_id:
+                return None
+
+            screenshot_dir = Path("screenshots")
+            screenshot_dir.mkdir(exist_ok=True)
+            local_path = screenshot_dir / f"tweet_{tweet_id}.png"
+            page.screenshot(path=local_path)
+
+            blob_name = f"screenshots/tweet_{tweet_id}.png"
+            self.gcs_client.upload_file(str(local_path), blob_name)
+            
+            # Clean up local file after upload
+            local_path.unlink()
+            
+            logger.info(f"Screenshot uploaded to GCS at {blob_name}")
+            return blob_name
+        except Exception as e:
+            logger.error(f"Failed to take or upload screenshot: {e}")
+            return None
 
     @staticmethod
     def is_valid_twitter_url(url: str) -> bool:
