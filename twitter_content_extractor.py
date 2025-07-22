@@ -92,6 +92,22 @@ class TweetExtractor:
             return {"error": str(e)}
 
     @staticmethod
+    def is_valid_twitter_url(url: str) -> bool:
+        """
+        Validates if the given URL is a plausible Twitter/X post URL.
+        It checks for the domain and the general structure of a status URL.
+        """
+        # A simple but effective regex to match common Twitter/X post URLs.
+        # It allows for http/https, www optional, and handles both x.com and twitter.com
+        pattern = re.compile(
+            r'^(https?://)?(www\.)?(twitter|x)\.com/[a-zA-Z0-9_]+/status/\d+(\?.*)?$'
+        )
+        is_match = bool(pattern.match(url))
+        if not is_match:
+            logger.warning(f"Validation failed for URL: {url}")
+        return is_match
+
+    @staticmethod
     def extract_tweet_id_from_url(url: str) -> Optional[str]:
         """
         Extracts the tweet ID from a Twitter/X URL using a robust regular expression.
