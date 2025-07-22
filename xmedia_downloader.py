@@ -40,8 +40,6 @@ app = Flask(__name__)
 
 # --- Read Configuration from Environment Variables ---
 # These are set in the Dockerfile or via `docker run -e ...`
-OUTPUT_DIR = os.getenv('OUTPUT_DIR', './downloads')
-SESSION_DIR = os.getenv('SESSION_DIR', './session-data')
 
 # Global session manager instance
 session_manager = None
@@ -51,7 +49,7 @@ def get_session_manager():
     """Get or create the global session manager instance."""
     global session_manager
     if session_manager is None:
-        session_manager = TwitterSessionManager(session_dir=SESSION_DIR)
+        session_manager = TwitterSessionManager()
     return session_manager
 
 
@@ -62,7 +60,6 @@ def process_tweet_download(url: str):
     """
     try:
         logger.info(f"--- Starting Download Process for URL: {url} ---")
-        logger.debug(f"Using OUTPUT_DIR: {OUTPUT_DIR}, SESSION_DIR: {SESSION_DIR}")
         
         # 1. Ensure a valid session exists before proceeding
         logger.info("--- Step 1: Validating Session ---")
@@ -106,7 +103,7 @@ def process_tweet_download(url: str):
         # 5. Download Media Files
         if media_items_to_download:
             logger.info(f"--- Step 4: Downloading {len(media_items_to_download)} Media Item(s) ---")
-            downloader = TwitterMediaDownloader(output_dir=OUTPUT_DIR)
+            downloader = TwitterMediaDownloader()
             downloaded_files = downloader.download_media_items(
                 media_items=media_items_to_download,
                 tweet_details=tweet_details,
@@ -114,7 +111,7 @@ def process_tweet_download(url: str):
             )
             
             if downloaded_files:
-                logger.info(f"✅ Success: Downloaded {len(downloaded_files)} media file(s) to '{OUTPUT_DIR}'.")
+                logger.info(f"✅ Success: Downloaded {len(downloaded_files)} media file(s) to GCS.")
                 logger.debug(f"Downloaded files: {downloaded_files}")
             else:
                 logger.warning(f"Found {len(media_items_to_download)} media items but could not download any. Check logs for errors.")
@@ -233,8 +230,6 @@ if __name__ == "__main__":
     debug_mode = os.getenv('LOG_LEVEL', 'INFO').upper() == 'DEBUG'
     
     logger.info(f"Starting web server on port {port}")
-    logger.info(f"Using output directory: {OUTPUT_DIR}")
-    logger.info(f"Using session directory: {SESSION_DIR}")
     if debug_mode:
         logger.debug("Debug logging is enabled")
         logger.debug("Flask debug mode is enabled")

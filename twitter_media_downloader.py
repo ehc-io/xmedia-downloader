@@ -18,9 +18,7 @@ class TwitterMediaDownloader:
     Handles the downloading of media items (images and videos) and saves them
     to a specified directory with descriptive filenames.
     """
-    def __init__(self, output_dir: str):
-        self.output_dir = Path(output_dir)
-        self.output_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self):
         self.gcs_client = GCSClient()
         self.session = requests.Session()
         # Use a common browser user agent
@@ -65,9 +63,6 @@ class TwitterMediaDownloader:
             url = item['url']
             filename = self._generate_filename(tweet_details, tweet_id, url, i)
             
-            # The local save path is now just for temporary reference if needed,
-            # the primary destination is GCS.
-            save_path = self.output_dir / filename
             gcs_blob_name = f"media/{filename}"
 
             logger.info(f"Downloading {item['type']} from {url} to GCS at '{gcs_blob_name}'")
