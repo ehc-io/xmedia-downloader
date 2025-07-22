@@ -8,6 +8,7 @@ import requests
 from tqdm import tqdm
 
 from gcs_client import GCSClient
+from common import get_requests_proxy_config
 
 # --- Logger Setup ---
 logger = logging.getLogger(__name__)
@@ -21,6 +22,7 @@ class TwitterMediaDownloader:
     def __init__(self):
         self.gcs_client = GCSClient()
         self.session = requests.Session()
+        self.session.proxies = get_requests_proxy_config()
         # Use a common browser user agent
         self.session.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"

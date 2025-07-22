@@ -7,6 +7,7 @@ from typing import Optional, Dict, Any, Tuple, List
 import time
 # ---> FIX: Add urlparse needed for extract_media_urls_from_api_data <---
 from urllib.parse import urlparse
+from common import get_playwright_proxy_config, get_requests_proxy_config
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,10 @@ class TwitterAPIClient:
         try:
             with sync_playwright() as playwright:
                 # Launch browser with the session state
-                browser = playwright.chromium.launch(headless=True)
+                browser = playwright.chromium.launch(
+                    headless=True,
+                    proxy=get_playwright_proxy_config()
+                )
                 context = browser.new_context(storage_state=str(self.session_path))
                 page = context.new_page()
                 
@@ -67,6 +71,12 @@ class TwitterAPIClient:
                 # Navigate to Twitter/X home page
                 logger.info("Navigating to Twitter/X home page")
                 page.goto("https://x.com/home")
+
+                # Take a screenshot after loading the page
+                screenshot_path = Path("screenshots") / f"session_refresh_{int(time.time())}.png"
+                screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(screenshot_path))
+                logger.info(f"Screenshot taken: {screenshot_path}")
                 
                 # Wait for more API calls to happen
                 logger.info("Waiting for API calls...")
@@ -227,7 +237,13 @@ class TwitterAPIClient:
 
         try:
             logger.debug(f"Attempting API request to: {api_url} with params: {params}")
-            response = requests.get(api_url, params=params, headers=headers, timeout=15)
+            response = requests.get(
+                api_url,
+                params=params,
+                headers=headers,
+                timeout=15,
+                proxies=get_requests_proxy_config()
+            )
 
             logger.debug(f"API Request URL (final): {response.url}")
 

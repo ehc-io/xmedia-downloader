@@ -36,4 +36,28 @@ def clean_filename(filename):
     
     # Return the cleaned filename with extension
     return base_name + extension
+
+def get_requests_proxy_config():
+    """
+    Reads proxy settings from PROXY environment variable for 'requests'.
+    """
+    proxy_env = os.environ.get('PROXY')
+    if proxy_env:
+        proxy_url = f"http://{proxy_env}"
+        return {
+            'http': proxy_url,
+            'https': proxy_url,
+        }
+    return None
+
+def get_playwright_proxy_config():
+    """
+    Reads proxy settings from PROXY environment variable for 'playwright'.
+    """
+    proxy_env = os.environ.get('PROXY')
+    if proxy_env:
+        return {
+            'server': f"http://{proxy_env}"
+        }
+    return None
     

@@ -120,17 +120,31 @@ async function performLogin(context) {
   }
   
   const page = await context.newPage();
-  
+  const screenshotsDir = path.join(__dirname, 'screenshots');
+
   try {
-    Logger.log('Navigating to X.com homepage...');
-    await page.goto("https://x.com/home");
-    await page.waitForTimeout(PAGE_LOAD_TIMEOUT);
+    Logger.log('Navigating to Twitter/X login page...');
+    await page.goto('https://x.com/login', {
+      waitUntil: 'domcontentloaded',
+      timeout: PAGE_LOAD_TIMEOUT
+    });
+
+    if (!fs.existsSync(screenshotsDir)) {
+      fs.mkdirSync(screenshotsDir, { recursive: true });
+    }
     
-    Logger.log(`Attempting to login with username: ${username}`);
+    const screenshotPath = path.join(screenshotsDir, `login-page-${Date.now()}.png`);
+    await page.screenshot({ path: screenshotPath });
+    Logger.log(`Screenshot of login page saved to ${screenshotPath}`);
+
+    // Wait for username input to be visible
+    const usernameSelector = 'input[name="text"]';
+    Logger.log('Waiting for username input field...');
+    await page.waitForSelector(usernameSelector, { state: 'visible', timeout: SELECTOR_TIMEOUT });
     
     // Fill username
-    await page.waitForSelector('input[name="text"]', { state: 'visible', timeout: SELECTOR_TIMEOUT });
-    await page.fill('input[name="text"]', username);
+    await page.fill(usernameSelector, username);
+    await page.waitForTimeout(FORM_INTERACTION_DELAY);
 
     // Click Next button
     await page.evaluate(() => {
@@ -146,18 +160,22 @@ async function performLogin(context) {
     await page.waitForTimeout(PAGE_LOAD_TIMEOUT);
 
     // Wait for password field and fill it
-    await page.waitForSelector('input[name="password"]', { state: 'visible', timeout: SELECTOR_TIMEOUT });
-    await page.fill('input[name="password"]', password);
+    const passwordSelector = 'input[name="password"]';
+    Logger.log('Waiting for password input field...');
+    await page.waitForSelector(passwordSelector, { state: 'visible', timeout: SELECTOR_TIMEOUT });
+    await page.fill(passwordSelector, password);
     await page.waitForTimeout(FORM_INTERACTION_DELAY);
 
     // Wait for login button to be visible
-    await page.waitForSelector('button[data-testid="LoginForm_Login_Button"]', { state: 'visible', timeout: SELECTOR_TIMEOUT });
+    const loginButtonSelector = 'button[data-testid="LoginForm_Login_Button"]';
+    Logger.log('Waiting for login button...');
+    await page.waitForSelector(loginButtonSelector, { state: 'visible', timeout: SELECTOR_TIMEOUT });
     
     // Take screenshot before clicking login button
     await takeScreenshot(page, 'before-login-click');
     
     // Click Login button
-    await page.click('button[data-testid="LoginForm_Login_Button"]');
+    await page.click(loginButtonSelector);
     
     // Wait for navigation to complete
     await page.waitForNavigation({ waitUntil: 'networkidle', timeout: LOGIN_WAIT_TIMEOUT }).catch(() => {

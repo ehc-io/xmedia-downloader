@@ -6,6 +6,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, Page, BrowserContext, Error as PlaywrightError
 from typing import Dict, Any, Optional
 from gcs_client import GCSClient
+from common import get_playwright_proxy_config
 
 logger = logging.getLogger(__name__)
 
@@ -37,7 +38,10 @@ class TweetExtractor:
         
         try:
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+                browser = p.chromium.launch(
+                    headless=True,
+                    proxy=get_playwright_proxy_config()
+                )
                 context = browser.new_context(storage_state=str(self.session_path))
                 page = context.new_page()
 
