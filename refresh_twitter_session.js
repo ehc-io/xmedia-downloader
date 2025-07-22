@@ -145,16 +145,25 @@ async function performLogin(context) {
     // Fill username
     await page.fill(usernameSelector, username);
     await page.waitForTimeout(FORM_INTERACTION_DELAY);
+    Logger.log('Filled username field.');
 
-    // Click Next button
-    const nextButtonSelector = 'div[role="button"]:has-text("Next")';
-    await page.click(nextButtonSelector);
+    // Take screenshot BEFORE trying to click "Next"
+    await takeScreenshot(page, 'before-next-click');
+    Logger.log('Took screenshot before attempting to click "Next" button.');
+
+    // Use a more robust selector to find and click the "Next" button
+    const nextButtonLocator = page.locator('button:has-text("Next")').first();
+    Logger.log('Waiting for "Next" button to be visible...');
+    await nextButtonLocator.waitFor({ state: 'visible', timeout: LOGIN_WAIT_TIMEOUT });
+    
+    Logger.log('Clicking "Next" button...');
+    await nextButtonLocator.click();
     Logger.log('Clicked "Next" after entering username.');
 
-    // Screenshot after clicking 'Next'
+    // Screenshot after clicking 'Next' to see the result
     await takeScreenshot(page, 'after-username-next-click');
     Logger.log('Took screenshot after clicking Next.');
-
+    
     // Wait for a bit for the next page to load
     await page.waitForTimeout(FORM_INTERACTION_DELAY);
 
