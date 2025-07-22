@@ -147,18 +147,18 @@ async function performLogin(context) {
     await page.waitForTimeout(FORM_INTERACTION_DELAY);
 
     // Click Next button
-    await page.evaluate(() => {
-      const buttons = Array.from(document.querySelectorAll('button[type="button"]'));
-      const nextButton = buttons.find(button => button.textContent.includes('Next'));
-      if (nextButton) {
-        nextButton.click();
-      } else {
-        throw new Error('Next button not found');
-      }
-    });
-    
-    await page.waitForTimeout(PAGE_LOAD_TIMEOUT);
+    const nextButtonSelector = 'div[role="button"]:has-text("Next")';
+    await page.click(nextButtonSelector);
+    Logger.log('Clicked "Next" after entering username.');
 
+    // Screenshot after clicking 'Next'
+    await takeScreenshot(page, 'after-username-next-click');
+    Logger.log('Took screenshot after clicking Next.');
+
+    // Wait for a bit for the next page to load
+    await page.waitForTimeout(FORM_INTERACTION_DELAY);
+
+    // It's possible Twitter asks for a phone number or email to verify
     // Wait for password field and fill it
     const passwordSelector = 'input[name="password"]';
     Logger.log('Waiting for password input field...');
