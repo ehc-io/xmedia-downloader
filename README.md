@@ -66,13 +66,13 @@ curl -X POST http://localhost:8080/extract-media \
 - `400 Bad Request`: Invalid or missing URL
 
 ### 2. Refresh Session
-**`POST /refresh-session`**
+**`GET /refresh-session`**
 
 Forces a fresh login session, regardless of current session validity.
 
 **Request:**
 ```bash
-curl -X POST http://localhost:8080/refresh-session
+curl -X GET http://localhost:8080/refresh-session
 ```
 
 **Responses:**
@@ -256,7 +256,7 @@ curl -X GET http://localhost:8080/session-status
 
 **Force Session Refresh:**
 ```bash
-curl -X POST http://localhost:8080/refresh-session
+curl -X GET http://localhost:8080/refresh-session
 ```
 
 **View Container Logs:**

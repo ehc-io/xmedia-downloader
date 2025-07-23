@@ -178,7 +178,7 @@ def process_session_refresh():
         logger.critical(f"An unexpected error occurred during session refresh: {e}", exc_info=True)
 
 
-@app.route('/refresh-session', methods=['POST'])
+@app.route('/refresh-session', methods=['GET'])
 def refresh_session():
     """API endpoint to trigger an asynchronous session refresh."""
     try:
