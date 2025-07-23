@@ -132,20 +132,42 @@ async function loadSessionFromGCS() {
     return null;
   }
   
+  Logger.log(`[GCS READ] Attempting to load session data from GCS bucket: ${GCS_BUCKET_NAME}`);
+  Logger.log(`[GCS READ] Target blob path: session-data/x-session.json`);
+  
   try {
     const file = storage.bucket(GCS_BUCKET_NAME).file('session-data/x-session.json');
+    
+    Logger.log('[GCS READ] Checking if session file exists in GCS...');
     const [exists] = await file.exists();
+    Logger.log(`[GCS READ] Session file existence check result: ${exists}`);
     
     if (exists) {
-      Logger.log('Found existing session data in GCS, attempting to restore...');
-      const [sessionDataBuffer] = await file.download();
-      return JSON.parse(sessionDataBuffer.toString('utf8'));
+      Logger.log('[GCS READ] Session file found in GCS, attempting to download...');
+      try {
+        const [sessionDataBuffer] = await file.download();
+        const sessionDataSize = sessionDataBuffer.length;
+        Logger.log(`[GCS READ] Successfully downloaded session data from GCS (${sessionDataSize} bytes)`);
+        
+        const sessionData = JSON.parse(sessionDataBuffer.toString('utf8'));
+        const cookieCount = sessionData.cookies ? sessionData.cookies.length : 0;
+        const originCount = sessionData.origins ? sessionData.origins.length : 0;
+        Logger.log(`[GCS READ] Successfully parsed session data - Cookies: ${cookieCount}, Origins: ${originCount}`);
+        
+        return sessionData;
+      } catch (parseError) {
+        Logger.error('[GCS READ] Failed to parse downloaded session data as JSON:', parseError);
+        return null;
+      }
+    } else {
+      Logger.log('[GCS READ] No session file found in GCS bucket');
+      return null;
     }
   } catch (error) {
-    Logger.error('Failed to load session data from GCS:', error);
+    Logger.error('[GCS READ] Failed to access GCS bucket or download session data:', error);
+    Logger.error(`[GCS READ] Error details - Bucket: ${GCS_BUCKET_NAME}, Blob: session-data/x-session.json`);
+    return null;
   }
-  
-  return null;
 }
 
 

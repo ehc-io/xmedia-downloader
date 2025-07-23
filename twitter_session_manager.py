@@ -106,16 +106,20 @@ class TwitterSessionManager:
         # First, try to use local session file if it exists
         if not self.session_path.exists():
             logger.info("Local session file does not exist, checking GCS...")
+            logger.info(f"[GCS ACCESS] About to check GCS bucket '{self.gcs_client.bucket_name}' for session file")
+            logger.info(f"[GCS ACCESS] Session blob path: {self.gcs_session_blob_name}")
+            
             # Try to download from GCS
             if not self.gcs_client.blob_exists(self.gcs_session_blob_name):
-                logger.info("Session file does not exist in GCS either.")
+                logger.info("[GCS ACCESS] Session file does not exist in GCS either.")
                 return False
             
             try:
-                logger.info(f"Downloading session file from GCS to '{self.session_path}'...")
+                logger.info(f"[GCS ACCESS] Session file found in GCS, downloading to local path: '{self.session_path}'")
                 self.gcs_client.download_file(self.gcs_session_blob_name, str(self.session_path))
+                logger.info(f"[GCS ACCESS] Successfully downloaded session file from GCS")
             except Exception as e:
-                logger.error(f"Failed to download session file from GCS: {e}")
+                logger.error(f"[GCS ACCESS] Failed to download session file from GCS: {e}")
                 return False
 
         logger.info("Verifying session validity using Playwright...")
