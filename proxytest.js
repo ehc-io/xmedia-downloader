@@ -127,7 +127,7 @@ async function takeScreenshot(page, filename) {
     
     // Try to upload to GCS if configured
     if (GCS_BUCKET_NAME && UPLOAD_TO_GCS) {
-        const gcsBlobName = `screenshots/proxy-test-${screenshotFilename}`;
+        const gcsBlobName = `media/screenshots/proxy-test-${screenshotFilename}`;
         await uploadToGCS(localPath, gcsBlobName);
     }
     
