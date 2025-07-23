@@ -91,15 +91,15 @@ COPY entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
 # Create directories for output and session data
-RUN mkdir -p /app/downloads /app/session-data && \
-    chown -R appuser:appuser /app /home/appuser
+RUN mkdir -p /app/downloads && \
+    chown -R appuser:appuser /app/downloads /home/appuser
 
 # Switch to the non-root user
 USER appuser
 
 # Define mount points for persisting data outside the container.
-# Example: docker run -v $(pwd)/downloads:/app/downloads -v $(pwd)/sessions:/app/session-data ...
-VOLUME ["/app/downloads", "/app/session-data"]
+# Example: docker run -v $(pwd)/downloads:/app/downloads ...
+VOLUME ["/app/downloads"]
 
 # --- Entrypoint & Command ---
 # This setup allows you to run the container and pass arguments directly
@@ -113,8 +113,8 @@ VOLUME ["/app/downloads", "/app/session-data"]
 #   docker run --rm -it \
 #     -e X_USERNAME="YOUR_USERNAME" \
 #     -e X_PASSWORD="YOUR_PASSWORD" \
+#     -e GCS_BUCKET_NAME="YOUR_GCS_BUCKET" \
 #     -v "$(pwd)/downloads:/app/downloads" \
-#     -v "$(pwd)/session-data:/app/session-data" \
 #     xmedia-downloader \
 #     --url "https://x.com/user/status/1234567890" \
 #     --verbose
@@ -123,7 +123,7 @@ VOLUME ["/app/downloads", "/app/session-data"]
 #   docker run --rm -it \
 #     -e X_USERNAME="YOUR_USERNAME" \
 #     -e X_PASSWORD="YOUR_PASSWORD" \
-#     -v "$(pwd)/session-data:/app/session-data" \
+#     -e GCS_BUCKET_NAME="YOUR_GCS_BUCKET" \
 #     xmedia-downloader \
 #     refresh-session
 ENTRYPOINT ["entrypoint.sh"]

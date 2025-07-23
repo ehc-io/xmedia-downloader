@@ -8,9 +8,12 @@
  * - Run: node refresh_twitter_session.js
  */
 
-const fs = require('fs');
-const path = require('path');
 const { chromium } = require('playwright');
+const { Storage } = require('@google-cloud/storage');
+
+// GCS Client
+const storage = new Storage();
+const GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME;
 
 // Configuration variables
 const PAGE_LOAD_TIMEOUT = process.env.PAGE_LOAD_TIMEOUT ? parseInt(process.env.PAGE_LOAD_TIMEOUT, 10) : 3000;
@@ -21,10 +24,6 @@ const SELECTOR_TIMEOUT = process.env.SELECTOR_TIMEOUT ? parseInt(process.env.SEL
 
 // Control whether to take login screenshots
 const LOGIN_SCREENSHOTS = true;
-
-// Session configuration
-const SESSION_DATA_DIR = "session-data";
-const SESSION_DATA_PATH = path.join(SESSION_DATA_DIR, "session.json");
 
 /**
  * Logger utility to provide consistent timestamp format
@@ -50,32 +49,79 @@ function getFormattedTimestamp() {
 }
 
 /**
- * Takes a screenshot
+ * Takes a screenshot and uploads it to GCS
  * @param {Page} page - Playwright page object
  * @param {string} filename - Base filename for the screenshot
  * @returns {Promise<void>}
  */
 async function takeScreenshot(page, filename) {
   if (!LOGIN_SCREENSHOTS) return;
+
+  if (!GCS_BUCKET_NAME) {
+    Logger.error('GCS_BUCKET_NAME environment variable not set. Cannot upload screenshot.');
+    return;
+  }
   
-  const screenshotsDir = 'screenshots';
-  ensureDirectoryExists(screenshotsDir); // This ensures the directory exists
-  
-  const screenshotPath = `${screenshotsDir}/${getFormattedTimestamp()}-${filename}.png`;
-  await page.screenshot({ path: screenshotPath, fullPage: true });
-  Logger.log(`Screenshot captured: ${screenshotPath}`);
+  try {
+    const screenshotBuffer = await page.screenshot({ fullPage: true });
+    const destination = `screenshots/${getFormattedTimestamp()}-${filename}.png`;
+    
+    await storage.bucket(GCS_BUCKET_NAME).file(destination).save(screenshotBuffer);
+    Logger.log(`Screenshot uploaded to gs://${GCS_BUCKET_NAME}/${destination}`);
+  } catch (error) {
+    Logger.error('Failed to upload screenshot to GCS:', error);
+  }
 }
 
 /**
- * Ensures a directory exists, creating it if necessary
- * @param {string} directory - Directory path to check/create
+ * Saves session data to Google Cloud Storage
+ * @param {BrowserContext} context - Playwright browser context
+ * @returns {Promise<void>}
  */
-function ensureDirectoryExists(directory) {
-  if (!fs.existsSync(directory)) {
-    fs.mkdirSync(directory, { recursive: true });
-    Logger.log(`Created directory: ${directory}`);
+async function saveSessionToGCS(context) {
+  if (!GCS_BUCKET_NAME) {
+    Logger.error('GCS_BUCKET_NAME environment variable not set. Cannot save session to GCS.');
+    return;
+  }
+  
+  try {
+    Logger.log('Saving session data to GCS...');
+    const storageState = await context.storageState();
+    const destination = 'session-data/session.json';
+    
+    await storage.bucket(GCS_BUCKET_NAME).file(destination).save(JSON.stringify(storageState, null, 2));
+    Logger.log(`Session data saved to gs://${GCS_BUCKET_NAME}/${destination}`);
+  } catch (error) {
+    Logger.error('Failed to save session to GCS:', error);
   }
 }
+
+/**
+ * Loads session data from Google Cloud Storage
+ * @returns {Promise<object|null>} - Parsed session data or null if not found/error
+ */
+async function loadSessionFromGCS() {
+  if (!GCS_BUCKET_NAME) {
+    Logger.error('GCS_BUCKET_NAME environment variable not set. Cannot load session from GCS.');
+    return null;
+  }
+  
+  try {
+    const file = storage.bucket(GCS_BUCKET_NAME).file('session-data/session.json');
+    const [exists] = await file.exists();
+    
+    if (exists) {
+      Logger.log('Found existing session data in GCS, attempting to restore...');
+      const [sessionDataBuffer] = await file.download();
+      return JSON.parse(sessionDataBuffer.toString('utf8'));
+    }
+  } catch (error) {
+    Logger.error('Failed to load session data from GCS:', error);
+  }
+  
+  return null;
+}
+
 
 /**
  * Checks if the session is valid
@@ -120,7 +166,6 @@ async function performLogin(context) {
   }
   
   const page = await context.newPage();
-  const screenshotsDir = path.join(__dirname, 'screenshots');
 
   try {
     Logger.log('Navigating to Twitter/X login page...');
@@ -129,13 +174,7 @@ async function performLogin(context) {
       timeout: PAGE_LOAD_TIMEOUT
     });
 
-    if (!fs.existsSync(screenshotsDir)) {
-      fs.mkdirSync(screenshotsDir, { recursive: true });
-    }
-    
-    const screenshotPath = path.join(screenshotsDir, `login-page-${Date.now()}.png`);
-    await page.screenshot({ path: screenshotPath });
-    Logger.log(`Screenshot of login page saved to ${screenshotPath}`);
+    await takeScreenshot(page, 'login-page');
 
     // Wait for username input to be visible
     const usernameSelector = 'input[name="text"]';
@@ -209,10 +248,8 @@ async function performLogin(context) {
     
     Logger.log('Login successful');
     
-    // Save session data
-    Logger.log('Saving session data...');
-    const storageState = await context.storageState();
-    fs.writeFileSync(SESSION_DATA_PATH, JSON.stringify(storageState, null, 2));
+    // Save session data to GCS
+    await saveSessionToGCS(context);
     
     await page.close();
     return true;
@@ -229,21 +266,13 @@ async function performLogin(context) {
  * @returns {Promise<BrowserContext>} - Authenticated browser context
  */
 async function getAuthenticatedContext(browser) {
-  // Create session data directory if it doesn't exist
-  if (!fs.existsSync(SESSION_DATA_DIR)) {
-    fs.mkdirSync(SESSION_DATA_DIR, { recursive: true });
-    Logger.log(`Created session data directory: ${SESSION_DATA_DIR}`);
-  }
-  
   let context;
   let hasValidSession = false;
   
-  // Check if we have session data
-  if (fs.existsSync(SESSION_DATA_PATH)) {
-    Logger.log('Found existing session data, attempting to restore session...');
+  // Check if we have session data in GCS
+  const sessionData = await loadSessionFromGCS();
+  if (sessionData) {
     try {
-      // Load session data
-      const sessionData = JSON.parse(fs.readFileSync(SESSION_DATA_PATH, 'utf8'));
       context = await browser.newContext({
         storageState: sessionData
       });
@@ -257,13 +286,13 @@ async function getAuthenticatedContext(browser) {
         context = null;
       }
     } catch (error) {
-      Logger.error('Error while restoring session:', error);
+      Logger.error('Error while restoring session from GCS data:', error);
       Logger.log('Will attempt fresh login');
       if (context) await context.close();
       context = null;
     }
   } else {
-    Logger.log('No session data found, will perform login');
+    Logger.log('No session data found in GCS, will perform login');
   }
   
   // If session is not valid, perform login
