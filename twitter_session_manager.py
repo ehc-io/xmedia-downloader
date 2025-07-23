@@ -131,6 +131,17 @@ class TwitterSessionManager:
                 )
                 try:
                     context = browser.new_context(storage_state=str(self.session_path))
+
+                    # Block unnecessary resources to speed up page loads.
+                    def block_unnecessary_requests(route):
+                        """Abort requests for images, media, and fonts."""
+                        if route.request.resource_type in {"image", "media", "font"}:
+                            route.abort()
+                        else:
+                            route.continue_()
+                    
+                    context.route("**/*", block_unnecessary_requests)
+                    
                     page = context.new_page()
                     try:
                          # Navigate to a page that requires login
