@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import logging
 import re
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -70,7 +71,8 @@ class TwitterMediaDownloader:
             logger.info(f"Downloading {item['type']} from {url} to GCS at '{gcs_blob_name}'")
 
             try:
-                response = self.session.get(url, stream=True, timeout=30)
+                network_timeout = int(os.environ.get('NETWORK_TIMEOUT', 30000)) // 1000  # Convert to seconds
+                response = self.session.get(url, stream=True, timeout=network_timeout)
                 response.raise_for_status()
 
                 # Upload directly to GCS without saving locally first

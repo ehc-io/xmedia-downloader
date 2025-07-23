@@ -7,6 +7,7 @@ from playwright.sync_api import sync_playwright, Page, BrowserContext, Error as 
 from typing import Dict, Any, Optional
 from gcs_client import GCSClient
 from common import get_playwright_proxy_config
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -48,12 +49,14 @@ class TweetExtractor:
                 try:
                     # Use a more robust navigation strategy
                     # 'domcontentloaded' is often faster and sufficient
-                    page.goto(tweet_url, wait_until="domcontentloaded", timeout=30000)
+                    network_timeout = int(os.environ.get('NETWORK_TIMEOUT', 30000))
+                    page.goto(tweet_url, wait_until="domcontentloaded", timeout=network_timeout)
 
                     # Wait for the main tweet container to be visible
                     # This is a more reliable indicator that the content has loaded
                     tweet_article_selector = 'article[data-testid="tweet"]'
-                    tweet_article = page.wait_for_selector(tweet_article_selector, timeout=20000, state='visible')
+                    interaction_timeout = int(os.environ.get('INTERACTION_TIMEOUT', 5000))
+                    tweet_article = page.wait_for_selector(tweet_article_selector, timeout=network_timeout, state='visible')
                     
                     if not tweet_article:
                         return {"error": "Could not find the main tweet element on the page."}

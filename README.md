@@ -107,10 +107,8 @@ curl -X GET http://localhost:8080/session-status
 | `X_USERNAME` | *Required* | Twitter/X username |
 | `X_PASSWORD` | *Required* | Twitter/X password |
 | `GCS_BUCKET_NAME` | *Required* | Google Cloud Storage bucket for all persistent data |
-| `PAGE_LOAD_TIMEOUT` | `3000` | (ms) Page load timeout for session refresh script |
-| `LOGIN_WAIT_TIMEOUT` | `15000` | (ms) Login wait timeout for session refresh script |
-| `FORM_INTERACTION_DELAY` | `3000` | (ms) Delay for form interactions in session refresh script |
-| `SELECTOR_TIMEOUT` | `3000` | (ms) Selector wait timeout for session refresh script |
+| `NETWORK_TIMEOUT` | `30000` | (ms) Timeout for all network operations (page loads, API calls, downloads) |
+| `INTERACTION_TIMEOUT` | `5000` | (ms) Timeout for UI interactions and waits |
 
 ### Docker Run Example
 
@@ -121,6 +119,8 @@ docker run -d \
   -e X_USERNAME="your_username" \
   -e X_PASSWORD="your_password" \
   -e GCS_BUCKET_NAME="your-gcs-bucket-name" \
+  -e NETWORK_TIMEOUT=45000 \
+  -e INTERACTION_TIMEOUT=3000 \
   xmedia-downloader
 ```
 

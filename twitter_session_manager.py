@@ -130,9 +130,11 @@ class TwitterSessionManager:
                     page = context.new_page()
                     try:
                          # Navigate to a page that requires login
-                        validation_timeout = int(os.environ.get('SESSION_VALIDATION_TIMEOUT', 20000))
-                        page.goto("https://x.com/home", timeout=validation_timeout, wait_until='domcontentloaded')
-                        page.wait_for_timeout(3000) # Allow redirect/rendering
+                        network_timeout = int(os.environ.get('NETWORK_TIMEOUT', 30000))
+                        page.goto("https://x.com/home", timeout=network_timeout, wait_until='domcontentloaded')
+                        
+                        interaction_timeout = int(os.environ.get('INTERACTION_TIMEOUT', 5000))
+                        page.wait_for_timeout(interaction_timeout) # Allow redirect/rendering
 
                         # Check for a reliable indicator of being logged in
                         compose_button_selector = 'a[data-testid="SideNav_NewTweet_Button"]'

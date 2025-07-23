@@ -15,11 +15,9 @@ const { Storage } = require('@google-cloud/storage');
 const storage = new Storage();
 const GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME;
 
-// Configuration variables
-const PAGE_LOAD_TIMEOUT = process.env.PAGE_LOAD_TIMEOUT ? parseInt(process.env.PAGE_LOAD_TIMEOUT, 10) : 3000;
-const LOGIN_WAIT_TIMEOUT = process.env.LOGIN_WAIT_TIMEOUT ? parseInt(process.env.LOGIN_WAIT_TIMEOUT, 10) : 15000;
-const FORM_INTERACTION_DELAY = process.env.FORM_INTERACTION_DELAY ? parseInt(process.env.FORM_INTERACTION_DELAY, 10) : 3000;
-const SELECTOR_TIMEOUT = process.env.SELECTOR_TIMEOUT ? parseInt(process.env.SELECTOR_TIMEOUT, 10) : 3000;
+// Configuration variables - SIMPLIFIED
+const NETWORK_TIMEOUT = process.env.NETWORK_TIMEOUT ? parseInt(process.env.NETWORK_TIMEOUT, 10) : 30000;
+const INTERACTION_TIMEOUT = process.env.INTERACTION_TIMEOUT ? parseInt(process.env.INTERACTION_TIMEOUT, 10) : 5000;
 // const TWEET_WAIT_TIMEOUT = 2000;
 
 // Control whether to take login screenshots
@@ -147,7 +145,7 @@ async function isSessionValid(context) {
   const page = await context.newPage();
   try {
     await page.goto("https://x.com/home");
-    await page.waitForTimeout(PAGE_LOAD_TIMEOUT);
+    await page.waitForTimeout(NETWORK_TIMEOUT);
     
     // Use the same validation logic as Python script - check for compose button
     const composeButton = await page.querySelector('a[data-testid="SideNav_NewTweet_Button"]');
@@ -197,7 +195,7 @@ async function performLogin(context) {
     Logger.log('Navigating to Twitter/X login page...');
     await page.goto('https://x.com/login', {
       waitUntil: 'domcontentloaded',
-      timeout: PAGE_LOAD_TIMEOUT
+      timeout: NETWORK_TIMEOUT
     });
 
     await takeScreenshot(page, 'login-page');
@@ -206,7 +204,7 @@ async function performLogin(context) {
     const usernameSelector = 'input[name="text"]';
     Logger.log('Waiting for username input field...');
     try {
-      await page.waitForSelector(usernameSelector, { state: 'visible', timeout: SELECTOR_TIMEOUT });
+      await page.waitForSelector(usernameSelector, { state: 'visible', timeout: INTERACTION_TIMEOUT });
     } catch (error) {
       Logger.error('Timeout waiting for username input field:', error);
       await takeScreenshot(page, 'username-input-timeout');
@@ -215,7 +213,7 @@ async function performLogin(context) {
     
     // Fill username
     await page.fill(usernameSelector, username);
-    await page.waitForTimeout(FORM_INTERACTION_DELAY);
+    await page.waitForTimeout(INTERACTION_TIMEOUT);
     Logger.log('Filled username field.');
 
     // Take screenshot BEFORE trying to click "Next"
@@ -226,7 +224,7 @@ async function performLogin(context) {
     const nextButtonLocator = page.locator('button:has-text("Next")').first();
     Logger.log('Waiting for "Next" button to be visible...');
     try {
-      await nextButtonLocator.waitFor({ state: 'visible', timeout: LOGIN_WAIT_TIMEOUT });
+      await nextButtonLocator.waitFor({ state: 'visible', timeout: INTERACTION_TIMEOUT });
     } catch (error) {
       Logger.error('Timeout waiting for Next button:', error);
       await takeScreenshot(page, 'next-button-timeout');
@@ -242,27 +240,27 @@ async function performLogin(context) {
     Logger.log('Took screenshot after clicking Next.');
     
     // Wait for a bit for the next page to load
-    await page.waitForTimeout(FORM_INTERACTION_DELAY);
+    await page.waitForTimeout(INTERACTION_TIMEOUT);
 
     // It's possible Twitter asks for a phone number or email to verify
     // Wait for password field and fill it
     const passwordSelector = 'input[name="password"]';
     Logger.log('Waiting for password input field...');
     try {
-      await page.waitForSelector(passwordSelector, { state: 'visible', timeout: SELECTOR_TIMEOUT });
+      await page.waitForSelector(passwordSelector, { state: 'visible', timeout: INTERACTION_TIMEOUT });
     } catch (error) {
       Logger.error('Timeout waiting for password input field:', error);
       await takeScreenshot(page, 'password-input-timeout');
       throw error;
     }
     await page.fill(passwordSelector, password);
-    await page.waitForTimeout(FORM_INTERACTION_DELAY);
+    await page.waitForTimeout(INTERACTION_TIMEOUT);
 
     // Wait for login button to be visible
     const loginButtonSelector = 'button[data-testid="LoginForm_Login_Button"]';
     Logger.log('Waiting for login button...');
     try {
-      await page.waitForSelector(loginButtonSelector, { state: 'visible', timeout: SELECTOR_TIMEOUT });
+      await page.waitForSelector(loginButtonSelector, { state: 'visible', timeout: INTERACTION_TIMEOUT });
     } catch (error) {
       Logger.error('Timeout waiting for login button:', error);
       await takeScreenshot(page, 'login-button-timeout');
@@ -276,19 +274,19 @@ async function performLogin(context) {
     await page.click(loginButtonSelector);
     
     // Wait for navigation to complete
-    await page.waitForNavigation({ waitUntil: 'networkidle', timeout: LOGIN_WAIT_TIMEOUT }).catch(() => {
+    await page.waitForNavigation({ waitUntil: 'networkidle', timeout: INTERACTION_TIMEOUT }).catch(() => {
       Logger.log('Navigation timeout occurred, but continuing...');
     });
     
     // Additional wait to ensure page is fully loaded
-    await page.waitForTimeout(5000);
+    await page.waitForTimeout(INTERACTION_TIMEOUT);
     
     // Take screenshot after login
     await takeScreenshot(page, 'after-login');
 
     // Verify login success by checking for a unique element on the home page
     try {
-      await page.waitForURL('**/home', { timeout: 10000 });
+      await page.waitForURL('**/home', { timeout: NETWORK_TIMEOUT });
     } catch (error) {
       Logger.error('Timeout waiting for home page URL:', error);
       await takeScreenshot(page, 'home-url-timeout');

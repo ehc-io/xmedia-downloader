@@ -5,6 +5,7 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, Error as PlaywrightError, Route, Request
 from typing import Optional, Dict, Any, Tuple, List
 import time
+import os
 # ---> FIX: Add urlparse needed for extract_media_urls_from_api_data <---
 from urllib.parse import urlparse
 from common import get_playwright_proxy_config, get_requests_proxy_config
@@ -72,7 +73,8 @@ class TwitterAPIClient:
 
                 # Navigate to Twitter/X home page
                 logger.info("Navigating to Twitter/X home page")
-                page.goto("https://x.com/home")
+                network_timeout = int(os.environ.get('NETWORK_TIMEOUT', 30000))
+                page.goto("https://x.com/home", timeout=network_timeout)
 
                 # Take a screenshot after loading the page
                 screenshot_filename = f"session_refresh_{int(time.time())}.png"
@@ -91,7 +93,8 @@ class TwitterAPIClient:
                 
                 # Wait for more API calls to happen
                 logger.info("Waiting for API calls...")
-                page.wait_for_timeout(5000)  # Wait for 5 seconds
+                interaction_timeout = int(os.environ.get('INTERACTION_TIMEOUT', 5000))
+                page.wait_for_timeout(interaction_timeout)  # Wait for dynamic content
 
                 # Extract cookies
                 cookies = context.cookies()
@@ -248,11 +251,12 @@ class TwitterAPIClient:
 
         try:
             logger.debug(f"Attempting API request to: {api_url} with params: {params}")
+            network_timeout = int(os.environ.get('NETWORK_TIMEOUT', 30000)) // 1000  # Convert to seconds
             response = requests.get(
                 api_url,
                 params=params,
                 headers=headers,
-                timeout=15,
+                timeout=network_timeout,
                 proxies=get_requests_proxy_config()
             )
 
