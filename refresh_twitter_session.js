@@ -61,13 +61,27 @@ async function takeScreenshot(page, filename) {
   }
   
   try {
-    const screenshotBuffer = await page.screenshot({ fullPage: true });
+    Logger.log(`Attempting to take screenshot: ${filename}`);
+    
+    // Use a shorter timeout for screenshots to avoid hanging
+    const screenshotBuffer = await page.screenshot({ 
+      fullPage: true, 
+      timeout: 10000  // 10 second timeout instead of default 30 seconds
+    });
+    
     const destination = `screenshots/${getFormattedTimestamp()}-${filename}.png`;
     
     await storage.bucket(GCS_BUCKET_NAME).file(destination).save(screenshotBuffer);
     Logger.log(`Screenshot uploaded to gs://${GCS_BUCKET_NAME}/${destination}`);
   } catch (error) {
-    Logger.error('Failed to upload screenshot to GCS:', error);
+    if (error.name === 'TimeoutError') {
+      Logger.error(`Screenshot creation timed out for ${filename}:`, error);
+    } else if (error.message && error.message.includes('save')) {
+      Logger.error(`Failed to upload screenshot ${filename} to GCS:`, error);
+    } else {
+      Logger.error(`Failed to create screenshot ${filename}:`, error);
+    }
+    // Don't throw - continue with login process even if screenshot fails
   }
 }
 
@@ -142,9 +156,11 @@ async function loadSessionFromGCS() {
  */
 async function isSessionValid(context) {
   Logger.log('Verifying if session is valid...');
+  Logger.log(`Using network timeout: ${NETWORK_TIMEOUT}ms for session validation`);
   const page = await context.newPage();
   try {
     await page.goto("https://x.com/home", { timeout: NETWORK_TIMEOUT });
+    Logger.log('Successfully loaded home page for session validation');
     await page.waitForTimeout(INTERACTION_TIMEOUT);
     
     // Use the same validation logic as Python script - check for compose button
@@ -198,10 +214,12 @@ async function performLogin(context) {
 
   try {
     Logger.log('Navigating to Twitter/X login page...');
+    Logger.log(`Using network timeout: ${NETWORK_TIMEOUT}ms`);
     await page.goto('https://x.com/login', {
       waitUntil: 'domcontentloaded',
       timeout: NETWORK_TIMEOUT
     });
+    Logger.log('Successfully loaded Twitter/X login page');
 
     await takeScreenshot(page, 'login-page');
 
@@ -427,6 +445,7 @@ async function main() {
 
     let browserOptions = { headless: true };
     if (PROXY) {
+        Logger.log(`Using proxy: ${PROXY}`);
         const proxyConfig = {};
         if (PROXY.includes('@')) {
             const [auth, server] = PROXY.split('@');
@@ -434,12 +453,36 @@ async function main() {
             proxyConfig.server = `http://${server}`;
             proxyConfig.username = username;
             proxyConfig.password = password;
+            Logger.log(`Proxy configured with authentication for server: http://${server}`);
         } else {
             proxyConfig.server = `http://${PROXY}`;
+            Logger.log(`Proxy configured without authentication for server: http://${PROXY}`);
         }
         browserOptions.proxy = proxyConfig;
+        
+        // Validate proxy format
+        try {
+            new URL(proxyConfig.server);
+        } catch (e) {
+            Logger.error(`Invalid proxy URL format: ${proxyConfig.server}`);
+        }
+    } else {
+        Logger.log('No proxy configured, using direct connection');
     }
-    const browser = await chromium.launch(browserOptions);
+    
+    Logger.log(`Timeout configurations - Network: ${NETWORK_TIMEOUT}ms, Interaction: ${INTERACTION_TIMEOUT}ms`);
+    
+    let browser;
+    try {
+        browser = await chromium.launch(browserOptions);
+        Logger.log('Browser launched successfully');
+    } catch (error) {
+        Logger.error('Failed to launch browser:', error);
+        if (PROXY) {
+            Logger.error('Browser launch failed with proxy configuration. Check proxy settings.');
+        }
+        throw error;
+    }
     
     try {
         await getAuthenticatedContext(browser);
@@ -449,6 +492,7 @@ async function main() {
         console.error('Failed to refresh session:', error);
         process.exit(1);
     } finally {
+        Logger.log('Closing browser...');
         await browser.close();
     }
 }
