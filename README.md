@@ -18,8 +18,9 @@ X Media Downloader is a web service for downloading videos and images from indiv
 ## Prerequisites
 
 - [Docker](https://www.docker.com/get-started) installed and running
-- A Twitter/X account with username and password
+- A Twitter/X account with username, password, and email address
 - A Google Cloud Storage bucket (with the VM's service account having read/write access)
+- (Optional) Proxy server configuration if running in a corporate network
 
 ## Quick Start
 
@@ -41,6 +42,7 @@ X Media Downloader is a web service for downloading videos and images from indiv
      -p 8080:8080 \
      -e X_USERNAME="your_twitter_username" \
      -e X_PASSWORD="your_twitter_password" \
+     -e X_EMAIL="your_email@domain.com" \
      -e GCS_BUCKET_NAME="your-gcs-bucket-name" \
      xmedia-downloader
    ```
@@ -106,9 +108,11 @@ curl -X GET http://localhost:8080/session-status
 | `LOG_LEVEL` | `INFO` | Logging level (`INFO` or `DEBUG`) |
 | `X_USERNAME` | *Required* | Twitter/X username |
 | `X_PASSWORD` | *Required* | Twitter/X password |
+| `X_EMAIL` | *Optional* | Twitter/X email (required if email confirmation appears during login) |
+| `PROXY` | *Optional* | Proxy server configuration (format: `ip:port` or `username:password@ip:port`) |
 | `GCS_BUCKET_NAME` | *Required* | Google Cloud Storage bucket for all persistent data |
-| `NETWORK_TIMEOUT` | `30000` | (ms) Timeout for all network operations (page loads, API calls, downloads) |
-| `INTERACTION_TIMEOUT` | `5000` | (ms) Timeout for UI interactions and waits |
+| `NETWORK_TIMEOUT` | `30000` | (ms) Timeout for network operations (page loads, navigation) |
+| `INTERACTION_TIMEOUT` | `5000` | (ms) Timeout for UI interactions and element waits |
 
 ### Docker Run Example
 
@@ -118,9 +122,23 @@ docker run -d \
   -p 8080:8080 \
   -e X_USERNAME="your_username" \
   -e X_PASSWORD="your_password" \
+  -e X_EMAIL="your_email@domain.com" \
   -e GCS_BUCKET_NAME="your-gcs-bucket-name" \
   -e NETWORK_TIMEOUT=45000 \
   -e INTERACTION_TIMEOUT=3000 \
+  xmedia-downloader
+```
+
+**With Proxy:**
+```bash
+docker run -d \
+  --name xmedia-downloader \
+  -p 8080:8080 \
+  -e X_USERNAME="your_username" \
+  -e X_PASSWORD="your_password" \
+  -e X_EMAIL="your_email@domain.com" \
+  -e PROXY="proxy.example.com:8080" \
+  -e GCS_BUCKET_NAME="your-gcs-bucket-name" \
   xmedia-downloader
 ```
 
@@ -132,6 +150,7 @@ docker run -d \
   -e LOG_LEVEL=DEBUG \
   -e X_USERNAME="your_username" \
   -e X_PASSWORD="your_password" \
+  -e X_EMAIL="your_email@domain.com" \
   -e GCS_BUCKET_NAME="your-gcs-bucket-name" \
   xmedia-downloader
 ```
@@ -142,9 +161,16 @@ All persistent data (session file, screenshots, downloaded media) is stored in t
 
 | GCS Path Prefix | Purpose |
 |-----------------|---------|
-| `x-session.json` | Authentication session storage |
-| `screenshots/` | Login process and tweet screenshots |
+| `session-data/x-session.json` | Authentication session storage |
+| `screenshots/` | Login process screenshots (with timestamps and error states) |
 | `media/` | Downloaded media files |
+
+### Screenshot Storage
+Screenshots are automatically captured during the login process for debugging purposes:
+- **Login flow**: Page states during authentication steps
+- **Error states**: Screenshots when timeouts or failures occur  
+- **Email confirmation**: Screenshots when email verification is required
+- **Timestamped filenames**: Format: `YYYY-MM-DDTHH-MM-SS-filename.png`
 
 ## How It Works
 
@@ -178,6 +204,21 @@ The service orchestrates several components:
 
 Query parameters and `www.` prefix are supported.
 
+## Authentication Notes
+
+### Email Confirmation
+Twitter/X sometimes requires email confirmation during login after entering the username. The system automatically handles this by:
+- Detecting when the email confirmation field appears
+- Using the `X_EMAIL` environment variable to fill the field
+- Clicking the Next button to proceed with the regular login flow
+
+If email confirmation is required but `X_EMAIL` is not set, the login will fail with a clear error message.
+
+### Proxy Support
+The system supports HTTP proxy configuration for networks requiring proxy access:
+- **Simple proxy**: `PROXY="proxy.example.com:8080"`
+- **Authenticated proxy**: `PROXY="username:password@proxy.example.com:8080"`
+
 ## Troubleshooting
 
 ### Enable Debug Logging
@@ -185,19 +226,47 @@ Query parameters and `www.` prefix are supported.
 docker run ... -e LOG_LEVEL=DEBUG ...
 ```
 
-### Check Session Status
+### Common Issues
+
+**Network Timeouts:**
+- Increase `NETWORK_TIMEOUT` for slow connections: `-e NETWORK_TIMEOUT=60000`
+- Check proxy configuration if using a proxy server
+- Test direct connection by removing `PROXY` environment variable
+
+**Email Confirmation Required:**
+- Error: "Email confirmation required but X_EMAIL environment variable not set"
+- Solution: Add `-e X_EMAIL="your_email@domain.com"` to Docker run command
+
+**Screenshot Failures:**
+- Screenshots may timeout on slow systems (10-second limit)
+- Login process continues even if screenshots fail
+- Check GCS bucket permissions if upload fails
+
+**Proxy Issues:**
+- Validate proxy server connectivity: `curl -x proxy.example.com:8080 https://x.com`
+- Check proxy authentication credentials
+- Verify proxy URL format in logs
+
+### Debugging Commands
+
+**Check Session Status:**
 ```bash
 curl -X GET http://localhost:8080/session-status
 ```
 
-### Force Session Refresh
+**Force Session Refresh:**
 ```bash
 curl -X POST http://localhost:8080/refresh-session
 ```
 
-### View Container Logs
+**View Container Logs:**
 ```bash
 docker logs xmedia-downloader
+```
+
+**Test Without Proxy:**
+```bash
+docker run ... # (remove -e PROXY=... from command)
 ```
 
 ## File Naming Convention
