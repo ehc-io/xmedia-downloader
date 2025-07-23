@@ -26,7 +26,7 @@ try {
 const TEST_URL = process.argv[2] || 'https://ifconfig.me';
 const PROXY = process.env.PROXY;
 const SCREENSHOTS_DIR = 'screenshots';
-const GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME;
+const GCS_BUCKET_NAME = 'x-media-downloader-bucket';
 const UPLOAD_TO_GCS = process.env.UPLOAD_TO_GCS === 'true';
 
 // IP checking service URLs
@@ -127,7 +127,7 @@ async function takeScreenshot(page, filename) {
     
     // Try to upload to GCS if configured
     if (GCS_BUCKET_NAME && UPLOAD_TO_GCS) {
-        const gcsBlobName = `media/screenshots/proxy-test-${screenshotFilename}`;
+        const gcsBlobName = `screenshots/${screenshotFilename}`;
         await uploadToGCS(localPath, gcsBlobName);
     }
     
@@ -258,9 +258,6 @@ async function testProxy() {
                     log('\nNo proxy configured. This should be your direct connection IP.', 'yellow');
                 }
                 
-                // Take screenshot for IP check too
-                await takeScreenshot(page, 'ip-check-result');
-                
                 // For ifconfig.me, get additional info
                 if (TEST_URL.includes('ifconfig.me') && !TEST_URL.includes('/ip')) {
                     log('\n=== Additional IP Info ===', 'bright');
@@ -288,7 +285,7 @@ async function testProxy() {
                 log('\n=== Page Load Results ===', 'bright');
                 
                 // Wait a bit for dynamic content to load
-                await page.waitForTimeout(2000);
+                await page.waitForTimeout(10000);
                 
                 // Take screenshot
                 const screenshotName = `proxy-test-${new URL(TEST_URL).hostname.replace(/\./g, '-')}`;
