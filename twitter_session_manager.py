@@ -130,7 +130,8 @@ class TwitterSessionManager:
                     page = context.new_page()
                     try:
                          # Navigate to a page that requires login
-                        page.goto("https://x.com/home", timeout=20000, wait_until='domcontentloaded')
+                        validation_timeout = int(os.environ.get('SESSION_VALIDATION_TIMEOUT', 20000))
+                        page.goto("https://x.com/home", timeout=validation_timeout, wait_until='domcontentloaded')
                         page.wait_for_timeout(3000) # Allow redirect/rendering
 
                         # Check for a reliable indicator of being logged in
