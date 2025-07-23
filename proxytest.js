@@ -6,15 +6,30 @@
  * Usage: node test_proxy.js [URL]
  * Default URL: https://ifconfig.me
  * 
- * This will show your public IP to verify if proxy is working.
+ * For IP check URLs: Shows your public IP to verify proxy
+ * For other URLs: Takes a screenshot to verify page loads correctly
  */
 
 const { chromium } = require('playwright');
+const fs = require('fs');
+const path = require('path');
 
 // Configuration
 const TEST_URL = process.argv[2] || 'https://ifconfig.me';
 const PROXY = process.env.PROXY;
-const SCREENSHOTS = process.env.SCREENSHOTS === 'true';
+const SCREENSHOTS_DIR = 'screenshots';
+
+// IP checking service URLs
+const IP_CHECK_URLS = [
+    'ifconfig.me',
+    'api.ipify.org',
+    'icanhazip.com',
+    'httpbin.org/ip',
+    'checkip.amazonaws.com',
+    'ipinfo.io',
+    'wtfismyip.com',
+    'ip-api.com'
+];
 
 // Color codes for terminal output
 const colors = {
@@ -30,6 +45,21 @@ const colors = {
 
 function log(message, color = 'reset') {
     console.log(`${colors[color]}${message}${colors.reset}`);
+}
+
+function getFormattedTimestamp() {
+    return new Date().toISOString().replace(/[:.]/g, '-');
+}
+
+function ensureDirectoryExists(directory) {
+    if (!fs.existsSync(directory)) {
+        fs.mkdirSync(directory, { recursive: true });
+        log(`Created directory: ${directory}`, 'green');
+    }
+}
+
+function isIPCheckURL(url) {
+    return IP_CHECK_URLS.some(ipService => url.includes(ipService));
 }
 
 function parseProxy(proxyString) {
@@ -57,6 +87,14 @@ function parseProxy(proxyString) {
     }
 }
 
+async function takeScreenshot(page, filename) {
+    ensureDirectoryExists(SCREENSHOTS_DIR);
+    const screenshotPath = path.join(SCREENSHOTS_DIR, `${getFormattedTimestamp()}-${filename}.png`);
+    await page.screenshot({ path: screenshotPath, fullPage: true });
+    log(`Screenshot saved: ${screenshotPath}`, 'magenta');
+    return screenshotPath;
+}
+
 async function testProxy() {
     log('\n=== Playwright Proxy Test ===\n', 'bright');
     
@@ -64,6 +102,7 @@ async function testProxy() {
     log('Configuration:', 'cyan');
     log(`  Test URL: ${TEST_URL}`, 'blue');
     log(`  PROXY env: ${PROXY || 'Not set'}`, 'blue');
+    log(`  Screenshot directory: ${SCREENSHOTS_DIR}`, 'blue');
     
     // Parse proxy configuration
     const proxyConfig = parseProxy(PROXY);
@@ -97,21 +136,40 @@ async function testProxy() {
         
         // Create context and page
         const context = await browser.newContext({
-            userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            userAgent: 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            viewport: { width: 1920, height: 1080 }
         });
         const page = await context.newPage();
         
-        // Set up request logging
+        // Set up request/response logging
+        let requestCount = 0;
+        let failedRequests = 0;
+        
         page.on('request', request => {
+            requestCount++;
             if (request.url() === TEST_URL) {
                 log(`\nMaking request to: ${request.url()}`, 'cyan');
             }
+        });
+        
+        page.on('requestfailed', request => {
+            failedRequests++;
+            log(`Request failed: ${request.url()} - ${request.failure().errorText}`, 'red');
         });
         
         page.on('response', response => {
             if (response.url() === TEST_URL) {
                 log(`Response status: ${response.status()} ${response.statusText()}`, 
                     response.status() === 200 ? 'green' : 'red');
+                
+                // Log response headers if debugging
+                if (process.env.DEBUG) {
+                    const headers = response.headers();
+                    log('\nResponse headers:', 'cyan');
+                    Object.entries(headers).forEach(([key, value]) => {
+                        console.log(`  ${key}: ${value}`);
+                    });
+                }
             }
         });
         
@@ -127,25 +185,23 @@ async function testProxy() {
             
             const loadTime = Date.now() - startTime;
             log(`Page loaded in ${loadTime}ms`, 'green');
+            log(`Total requests: ${requestCount}, Failed: ${failedRequests}`, 'blue');
             
-            // Get page content
-            const content = await page.content();
-            const textContent = await page.textContent('body');
+            // Get page info
+            const title = await page.title();
+            const url = page.url();
             
-            // Take screenshot if requested
-            if (SCREENSHOTS) {
-                const screenshotPath = `proxy-test-${Date.now()}.png`;
-                await page.screenshot({ path: screenshotPath, fullPage: true });
-                log(`\nScreenshot saved: ${screenshotPath}`, 'magenta');
+            log(`\nPage title: ${title}`, 'green');
+            if (url !== TEST_URL) {
+                log(`Final URL (after redirects): ${url}`, 'yellow');
             }
             
-            // Display results
-            log('\n=== Results ===', 'bright');
-            
-            // For IP checking services
-            if (TEST_URL.includes('ifconfig.me') || TEST_URL.includes('ipinfo.io') || 
-                TEST_URL.includes('icanhazip.com') || TEST_URL.includes('api.ipify.org')) {
-                const ip = textContent.trim();
+            // Handle IP check services
+            if (isIPCheckURL(TEST_URL)) {
+                const textContent = await page.textContent('body');
+                const ip = textContent.trim().split('\n')[0]; // Get first line for multi-line responses
+                
+                log('\n=== IP Check Results ===', 'bright');
                 log(`Your public IP address: ${ip}`, 'green');
                 
                 if (PROXY) {
@@ -154,36 +210,102 @@ async function testProxy() {
                 } else {
                     log('\nNo proxy configured. This should be your direct connection IP.', 'yellow');
                 }
-            } else {
-                // For other URLs, show page title and a snippet
-                const title = await page.title();
-                log(`Page title: ${title}`, 'green');
-                log(`\nPage content (first 200 chars):`, 'cyan');
-                log(textContent.substring(0, 200).trim() + '...', 'reset');
-            }
-            
-            // Test additional endpoints if it's an IP service
-            if (TEST_URL.includes('ifconfig.me')) {
-                log('\n=== Additional IP Info ===', 'bright');
                 
-                try {
-                    // Get user agent
-                    await page.goto('https://ifconfig.me/ua', { timeout: 10000 });
-                    const userAgent = await page.textContent('body');
-                    log(`User Agent: ${userAgent.trim()}`, 'blue');
+                // Take screenshot for IP check too
+                await takeScreenshot(page, 'ip-check-result');
+                
+                // For ifconfig.me, get additional info
+                if (TEST_URL.includes('ifconfig.me') && !TEST_URL.includes('/ip')) {
+                    log('\n=== Additional IP Info ===', 'bright');
                     
-                    // Get more details
-                    await page.goto('https://ifconfig.me/all', { timeout: 10000 });
-                    const allInfo = await page.textContent('body');
-                    log('\nFull connection info:', 'cyan');
-                    console.log(allInfo.trim());
-                } catch (error) {
-                    log('Could not fetch additional info', 'yellow');
+                    try {
+                        // Get user agent
+                        await page.goto('https://ifconfig.me/ua', { timeout: 10000 });
+                        const userAgent = await page.textContent('body');
+                        log(`User Agent: ${userAgent.trim()}`, 'blue');
+                        
+                        // Get JSON data if available
+                        await page.goto('https://ifconfig.me/all.json', { timeout: 10000 });
+                        const jsonText = await page.textContent('body');
+                        const data = JSON.parse(jsonText);
+                        log('\nConnection details:', 'cyan');
+                        Object.entries(data).forEach(([key, value]) => {
+                            console.log(`  ${key}: ${value}`);
+                        });
+                    } catch (error) {
+                        log('Could not fetch additional info', 'yellow');
+                    }
                 }
+            } else {
+                // For non-IP check URLs, take screenshot and show page info
+                log('\n=== Page Load Results ===', 'bright');
+                
+                // Wait a bit for dynamic content to load
+                await page.waitForTimeout(2000);
+                
+                // Take screenshot
+                const screenshotName = `proxy-test-${new URL(TEST_URL).hostname.replace(/\./g, '-')}`;
+                const screenshotPath = await takeScreenshot(page, screenshotName);
+                
+                // Get page metrics
+                const metrics = await page.evaluate(() => {
+                    return {
+                        documentHeight: document.documentElement.scrollHeight,
+                        documentWidth: document.documentElement.scrollWidth,
+                        imageCount: document.images.length,
+                        linkCount: document.links.length,
+                        scriptCount: document.scripts.length
+                    };
+                });
+                
+                log(`Page metrics:`, 'cyan');
+                log(`  Document size: ${metrics.documentWidth}x${metrics.documentHeight}px`, 'blue');
+                log(`  Images: ${metrics.imageCount}`, 'blue');
+                log(`  Links: ${metrics.linkCount}`, 'blue');
+                log(`  Scripts: ${metrics.scriptCount}`, 'blue');
+                
+                // Show a preview of the text content
+                const textContent = await page.textContent('body');
+                const cleanText = textContent.replace(/\s+/g, ' ').trim();
+                if (cleanText.length > 0) {
+                    log(`\nPage content preview (first 300 chars):`, 'cyan');
+                    log(cleanText.substring(0, 300) + (cleanText.length > 300 ? '...' : ''), 'reset');
+                }
+                
+                // Check for common indicators of blocked content
+                const blockedIndicators = [
+                    'access denied',
+                    'forbidden',
+                    'blocked',
+                    'not available in your country',
+                    'error 403',
+                    'cloudflare',
+                    'please verify you are human'
+                ];
+                
+                const pageContent = (title + ' ' + cleanText).toLowerCase();
+                const possiblyBlocked = blockedIndicators.some(indicator => 
+                    pageContent.includes(indicator)
+                );
+                
+                if (possiblyBlocked) {
+                    log('\n⚠️  Page might be blocking proxy access!', 'yellow');
+                    log('Check the screenshot to verify if content loaded correctly.', 'yellow');
+                }
+                
+                log(`\n✅ Page loaded successfully! Check screenshot: ${screenshotPath}`, 'green');
             }
             
         } catch (navigationError) {
             log(`\nNavigation failed: ${navigationError.message}`, 'red');
+            
+            // Try to take a screenshot of the error state
+            try {
+                await takeScreenshot(page, 'error-state');
+                log('Screenshot of error state saved', 'yellow');
+            } catch (screenshotError) {
+                log('Could not capture error screenshot', 'yellow');
+            }
             
             if (navigationError.message.includes('net::ERR_PROXY_CONNECTION_FAILED')) {
                 log('\nProxy connection failed! Check:', 'red');
@@ -199,6 +321,10 @@ async function testProxy() {
                 log('  - Proxy server is slow or unresponsive', 'yellow');
                 log('  - Target website is blocking proxy IPs', 'yellow');
                 log('  - Network connectivity issues', 'yellow');
+            } else if (navigationError.message.includes('net::ERR_NAME_NOT_RESOLVED')) {
+                log('\nDNS resolution failed!', 'red');
+                log('  - Check if the URL is correct', 'yellow');
+                log('  - Verify DNS is working in the container', 'yellow');
             }
             
             throw navigationError;
@@ -219,6 +345,13 @@ async function testProxy() {
     }
     
     log('\n=== Test completed successfully ===\n', 'green');
+}
+
+// Main execution
+if (process.argv.length > 3) {
+    log('Usage: node test_proxy.js [URL]', 'yellow');
+    log('Example: node test_proxy.js https://example.com', 'yellow');
+    process.exit(1);
 }
 
 // Run the test
