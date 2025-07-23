@@ -284,7 +284,23 @@ async function getAuthenticatedContext(browser) {
 // Main function - Entry point of the script
 async function main() {
     console.log('Starting Twitter/X session refresh...');
-    const browser = await chromium.launch({ headless: true });
+    const PROXY = process.env.PROXY;
+
+    let browserOptions = { headless: true };
+    if (PROXY) {
+        const proxyConfig = {};
+        if (PROXY.includes('@')) {
+            const [auth, server] = PROXY.split('@');
+            const [username, password] = auth.split(':');
+            proxyConfig.server = `http://${server}`;
+            proxyConfig.username = username;
+            proxyConfig.password = password;
+        } else {
+            proxyConfig.server = `http://${PROXY}`;
+        }
+        browserOptions.proxy = proxyConfig;
+    }
+    const browser = await chromium.launch(browserOptions);
     
     try {
         await getAuthenticatedContext(browser);

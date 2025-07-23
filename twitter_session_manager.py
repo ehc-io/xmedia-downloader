@@ -7,6 +7,7 @@ import logging
 from pathlib import Path
 from playwright.sync_api import sync_playwright, Error as PlaywrightError
 from gcs_client import GCSClient
+from common import get_playwright_proxy_config
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -105,7 +106,10 @@ class TwitterSessionManager:
         logger.info("Verifying session validity using Playwright...")
         try:
             with sync_playwright() as p:
-                browser = p.chromium.launch(headless=True)
+                browser = p.chromium.launch(
+                    headless=True,
+                    proxy=get_playwright_proxy_config()
+                )
                 try:
                     context = browser.new_context(storage_state=str(self.session_path))
                     page = context.new_page()

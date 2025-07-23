@@ -56,8 +56,18 @@ def get_playwright_proxy_config():
     """
     proxy_env = os.environ.get('PROXY')
     if proxy_env:
-        return {
-            'server': f"http://{proxy_env}"
-        }
+        # Parse user:pass@host:port format
+        if '@' in proxy_env:
+            auth, server = proxy_env.split('@')
+            username, password = auth.split(':')
+            return {
+                'server': f"http://{server}",
+                'username': username,
+                'password': password
+            }
+        else:
+            return {
+                'server': f"http://{proxy_env}"
+            }
     return None
     
