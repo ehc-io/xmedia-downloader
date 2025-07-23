@@ -149,15 +149,27 @@ async function isSessionValid(context) {
     await page.goto("https://x.com/home");
     await page.waitForTimeout(PAGE_LOAD_TIMEOUT);
     
-    // Verify login success
-    const isLoginSuccessful = await page.evaluate(() => {
-      return document.title.includes("Home");
-    });
+    // Use the same validation logic as Python script - check for compose button
+    const composeButton = await page.querySelector('a[data-testid="SideNav_NewTweet_Button"]');
+    const isLoginSuccessful = composeButton !== null;
+    
+    if (isLoginSuccessful) {
+      Logger.log('Session validation: Found compose button, session appears valid.');
+    } else {
+      Logger.log(`Session validation: Compose button not found, session appears invalid. Title: ${await page.title()}`);
+    }
 
     await page.close();
     return isLoginSuccessful;
   } catch (error) {
     Logger.error('Error while checking session validity:', error);
+    // Take screenshot on timeout/error for debugging
+    try {
+      await takeScreenshot(page, 'session-validation-timeout');
+      Logger.log('Screenshot taken due to session validation timeout/error.');
+    } catch (screenshotError) {
+      Logger.error('Failed to take timeout screenshot:', screenshotError);
+    }
     await page.close();
     return false;
   }
@@ -193,7 +205,13 @@ async function performLogin(context) {
     // Wait for username input to be visible
     const usernameSelector = 'input[name="text"]';
     Logger.log('Waiting for username input field...');
-    await page.waitForSelector(usernameSelector, { state: 'visible', timeout: SELECTOR_TIMEOUT });
+    try {
+      await page.waitForSelector(usernameSelector, { state: 'visible', timeout: SELECTOR_TIMEOUT });
+    } catch (error) {
+      Logger.error('Timeout waiting for username input field:', error);
+      await takeScreenshot(page, 'username-input-timeout');
+      throw error;
+    }
     
     // Fill username
     await page.fill(usernameSelector, username);
@@ -207,7 +225,13 @@ async function performLogin(context) {
     // Use a more robust selector to find and click the "Next" button
     const nextButtonLocator = page.locator('button:has-text("Next")').first();
     Logger.log('Waiting for "Next" button to be visible...');
-    await nextButtonLocator.waitFor({ state: 'visible', timeout: LOGIN_WAIT_TIMEOUT });
+    try {
+      await nextButtonLocator.waitFor({ state: 'visible', timeout: LOGIN_WAIT_TIMEOUT });
+    } catch (error) {
+      Logger.error('Timeout waiting for Next button:', error);
+      await takeScreenshot(page, 'next-button-timeout');
+      throw error;
+    }
     
     Logger.log('Clicking "Next" button...');
     await nextButtonLocator.click();
@@ -224,14 +248,26 @@ async function performLogin(context) {
     // Wait for password field and fill it
     const passwordSelector = 'input[name="password"]';
     Logger.log('Waiting for password input field...');
-    await page.waitForSelector(passwordSelector, { state: 'visible', timeout: SELECTOR_TIMEOUT });
+    try {
+      await page.waitForSelector(passwordSelector, { state: 'visible', timeout: SELECTOR_TIMEOUT });
+    } catch (error) {
+      Logger.error('Timeout waiting for password input field:', error);
+      await takeScreenshot(page, 'password-input-timeout');
+      throw error;
+    }
     await page.fill(passwordSelector, password);
     await page.waitForTimeout(FORM_INTERACTION_DELAY);
 
     // Wait for login button to be visible
     const loginButtonSelector = 'button[data-testid="LoginForm_Login_Button"]';
     Logger.log('Waiting for login button...');
-    await page.waitForSelector(loginButtonSelector, { state: 'visible', timeout: SELECTOR_TIMEOUT });
+    try {
+      await page.waitForSelector(loginButtonSelector, { state: 'visible', timeout: SELECTOR_TIMEOUT });
+    } catch (error) {
+      Logger.error('Timeout waiting for login button:', error);
+      await takeScreenshot(page, 'login-button-timeout');
+      throw error;
+    }
     
     // Take screenshot before clicking login button
     await takeScreenshot(page, 'before-login-click');
@@ -251,7 +287,13 @@ async function performLogin(context) {
     await takeScreenshot(page, 'after-login');
 
     // Verify login success by checking for a unique element on the home page
-    await page.waitForURL('**/home', { timeout: 10000 });
+    try {
+      await page.waitForURL('**/home', { timeout: 10000 });
+    } catch (error) {
+      Logger.error('Timeout waiting for home page URL:', error);
+      await takeScreenshot(page, 'home-url-timeout');
+      throw error;
+    }
     const isLoginSuccessful = page.url().includes('/home');
 
     if (!isLoginSuccessful) {
@@ -269,6 +311,13 @@ async function performLogin(context) {
     return true;
   } catch (error) {
     Logger.error('Error during login:', error);
+    // Take screenshot on any login error for debugging
+    try {
+      await takeScreenshot(page, 'login-error');
+      Logger.log('Screenshot taken due to login error.');
+    } catch (screenshotError) {
+      Logger.error('Failed to take error screenshot:', screenshotError);
+    }
     await page.close();
     return false;
   }
