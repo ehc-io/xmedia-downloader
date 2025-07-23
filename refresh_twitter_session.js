@@ -87,7 +87,7 @@ async function saveSessionToGCS(context) {
   try {
     Logger.log('Saving session data to GCS...');
     const storageState = await context.storageState();
-    const destination = 'session-data/session.json';
+    const destination = 'session-data/x-session.json';
     
     await storage.bucket(GCS_BUCKET_NAME).file(destination).save(JSON.stringify(storageState, null, 2));
     Logger.log(`Session data saved to gs://${GCS_BUCKET_NAME}/${destination}`);
@@ -107,7 +107,7 @@ async function loadSessionFromGCS() {
   }
   
   try {
-    const file = storage.bucket(GCS_BUCKET_NAME).file('session-data/session.json');
+    const file = storage.bucket(GCS_BUCKET_NAME).file('session-data/x-session.json');
     const [exists] = await file.exists();
     
     if (exists) {

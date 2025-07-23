@@ -8,6 +8,8 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, Error as PlaywrightError
 from gcs_client import GCSClient
 from common import get_playwright_proxy_config
+import tempfile
+import atexit
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -15,19 +17,17 @@ logger = logging.getLogger(__name__)
 class TwitterSessionManager:
     """Manages Twitter authentication session validation and refresh."""
 
-    def __init__(self, session_dir="session-data", session_file="x-session.json"):
-        self.session_dir = Path(session_dir)
-        self.session_file = session_file
-        self.session_path = self.session_dir / self.session_file
+    def __init__(self, session_dir_name="session-data", session_file_name="x-session.json"):
+        # Use a temporary directory for local session file storage
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.session_path = Path(self.temp_dir.name) / session_file_name
+        
+        # Register cleanup for the temporary directory
+        atexit.register(self.temp_dir.cleanup)
+        
         self.gcs_client = GCSClient()
-        self.gcs_session_blob_name = self.session_file
-        self._ensure_session_dir_exists()
-
-    def _ensure_session_dir_exists(self):
-        """Ensure the session directory exists."""
-        if not self.session_dir.exists():
-            logger.info(f"Creating session data directory: {self.session_dir}")
-            self.session_dir.mkdir(parents=True, exist_ok=True)
+        # Define the full GCS blob path
+        self.gcs_session_blob_name = f"{session_dir_name}/{session_file_name}"
 
     def get_session_path(self) -> Path:
         """Return the full path to the session file."""
@@ -36,6 +36,7 @@ class TwitterSessionManager:
     def _run_refresh_script(self) -> bool:
         """
         Executes the Node.js script to refresh the Twitter session.
+        The Node.js script is responsible for uploading the new session to GCS.
         Returns True if successful, False otherwise.
         """
         script_path = Path("/app/refresh_twitter_session.js")
@@ -67,20 +68,9 @@ class TwitterSessionManager:
                 logger.error(f"Failed to refresh session. Node script exited with code {result.returncode}.")
                 logger.error(f"Stderr: {result.stderr}")
                 return False
-
-            if not self.session_path.exists():
-                 logger.error(f"Session refresh script ran but session file '{self.session_path}' was not created.")
-                 return False
-
-            try:
-                logger.info(f"Uploading refreshed session to GCS as '{self.gcs_session_blob_name}'...")
-                self.gcs_client.upload_file(str(self.session_path), self.gcs_session_blob_name)
-                logger.info("Session successfully uploaded to GCS.")
-            except Exception as e:
-                logger.error(f"Failed to upload session file to GCS: {e}")
-                return False
-
-            logger.info("Session data refreshed successfully by Node.js script.")
+            
+            # The Node.js script handles the GCS upload. No local file check or upload is needed here.
+            logger.info("Session data refreshed and uploaded to GCS successfully by Node.js script.")
             return True
         except FileNotFoundError:
              logger.error("Error: 'node' command not found. Please ensure Node.js is installed and in your PATH.")
