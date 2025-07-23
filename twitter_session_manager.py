@@ -50,9 +50,7 @@ class TwitterSessionManager:
 
         try:
             logger.info("Attempting to refresh user session via Node.js script...")
-            # Ensure the script is executable (useful in some environments)
-            os.chmod(script_path, 0o755)
-
+            
             result = subprocess.run(
                 ["node", str(script_path)],
                 capture_output=True,

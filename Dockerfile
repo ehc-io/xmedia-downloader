@@ -90,6 +90,10 @@ COPY --from=builder /usr/lib/node_modules /usr/lib/node_modules
 COPY entrypoint.sh /usr/local/bin/
 RUN chmod +x /usr/local/bin/entrypoint.sh
 
+# Make the refresh script executable and change ownership to appuser
+RUN chmod +x /app/refresh_twitter_session.js && \
+    chown appuser:appuser /app/refresh_twitter_session.js
+
 # Create directories for output and session data
 RUN mkdir -p /app/downloads && \
     chown -R appuser:appuser /app/downloads /home/appuser
