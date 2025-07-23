@@ -74,7 +74,7 @@ async function takeScreenshot(page, filename) {
 }
 
 /**
- * Saves session data to Google Cloud Storage
+ * Saves session data to Google Cloud Storage and local file
  * @param {BrowserContext} context - Playwright browser context
  * @returns {Promise<void>}
  */
@@ -85,14 +85,28 @@ async function saveSessionToGCS(context) {
   }
   
   try {
-    Logger.log('Saving session data to GCS...');
+    Logger.log('Saving session data to GCS and local file...');
     const storageState = await context.storageState();
-    const destination = 'session-data/x-session.json';
+    const sessionData = JSON.stringify(storageState, null, 2);
     
-    await storage.bucket(GCS_BUCKET_NAME).file(destination).save(JSON.stringify(storageState, null, 2));
+    // Save to GCS
+    const destination = 'session-data/x-session.json';
+    await storage.bucket(GCS_BUCKET_NAME).file(destination).save(sessionData);
     Logger.log(`Session data saved to gs://${GCS_BUCKET_NAME}/${destination}`);
+    
+    // Also save to local file for Python script to use
+    const fs = require('fs').promises;
+    const path = require('path');
+    const localSessionDir = '/tmp/session-data';
+    const localSessionFile = path.join(localSessionDir, 'x-session.json');
+    
+    // Ensure directory exists
+    await fs.mkdir(localSessionDir, { recursive: true });
+    await fs.writeFile(localSessionFile, sessionData);
+    Logger.log(`Session data also saved locally to ${localSessionFile}`);
+    
   } catch (error) {
-    Logger.error('Failed to save session to GCS:', error);
+    Logger.error('Failed to save session to GCS or local file:', error);
   }
 }
 

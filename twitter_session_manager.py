@@ -8,8 +8,6 @@ from pathlib import Path
 from playwright.sync_api import sync_playwright, Error as PlaywrightError
 from gcs_client import GCSClient
 from common import get_playwright_proxy_config
-import tempfile
-import atexit
 
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
@@ -18,12 +16,12 @@ class TwitterSessionManager:
     """Manages Twitter authentication session validation and refresh."""
 
     def __init__(self, session_dir_name="session-data", session_file_name="x-session.json"):
-        # Use a temporary directory for local session file storage
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.session_path = Path(self.temp_dir.name) / session_file_name
+        # Use /tmp for local session file storage (writable by all users)
+        self.session_dir = Path("/tmp") / session_dir_name
+        self.session_path = self.session_dir / session_file_name
         
-        # Register cleanup for the temporary directory
-        atexit.register(self.temp_dir.cleanup)
+        # Ensure local session directory exists
+        self.session_dir.mkdir(parents=True, exist_ok=True)
         
         self.gcs_client = GCSClient()
         # Define the full GCS blob path
@@ -79,17 +77,20 @@ class TwitterSessionManager:
 
     def _is_session_valid_playwright(self) -> bool:
         """Checks if the session stored in the file is currently valid using Playwright."""
-        logger.info(f"Checking for session file '{self.gcs_session_blob_name}' in GCS bucket.")
-        if not self.gcs_client.blob_exists(self.gcs_session_blob_name):
-            logger.info("Session file does not exist in GCS.")
-            return False
-
-        try:
-            logger.info(f"Downloading session file from GCS to '{self.session_path}'...")
-            self.gcs_client.download_file(self.gcs_session_blob_name, str(self.session_path))
-        except Exception as e:
-            logger.error(f"Failed to download session file from GCS: {e}")
-            return False
+        # First, try to use local session file if it exists
+        if not self.session_path.exists():
+            logger.info("Local session file does not exist, checking GCS...")
+            # Try to download from GCS
+            if not self.gcs_client.blob_exists(self.gcs_session_blob_name):
+                logger.info("Session file does not exist in GCS either.")
+                return False
+            
+            try:
+                logger.info(f"Downloading session file from GCS to '{self.session_path}'...")
+                self.gcs_client.download_file(self.gcs_session_blob_name, str(self.session_path))
+            except Exception as e:
+                logger.error(f"Failed to download session file from GCS: {e}")
+                return False
 
         logger.info("Verifying session validity using Playwright...")
         try:
@@ -107,14 +108,7 @@ class TwitterSessionManager:
                         page.wait_for_timeout(3000) # Allow redirect/rendering
 
                         # Check for a reliable indicator of being logged in
-                        # Option 1: Check title (can be brittle)
-                        # is_logged_in = "Home / X" in page.title() or "/ X" in page.title()
-
-                        # Option 2: Check for a unique element only present when logged in
-                        # Example: Profile link in the sidebar
-                        profile_link_selector = 'a[data-testid="AppTabBar_Profile_Link"]'
-                        compose_button_selector = 'a[data-testid="SideNav_NewTweet_Button"]' # More stable?
-
+                        compose_button_selector = 'a[data-testid="SideNav_NewTweet_Button"]'
                         is_logged_in = page.query_selector(compose_button_selector) is not None
 
                         if is_logged_in:
