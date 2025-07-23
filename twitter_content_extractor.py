@@ -106,10 +106,8 @@ class TweetExtractor:
             if not tweet_id:
                 return None
 
-            screenshot_dir = Path("screenshots")
-            screenshot_dir.mkdir(exist_ok=True)
-            local_path = screenshot_dir / f"tweet_{tweet_id}.png"
-            page.screenshot(path=local_path)
+            local_path = Path("/tmp") / f"tweet_{tweet_id}.png"
+            page.screenshot(path=str(local_path))
 
             blob_name = f"screenshots/tweet_{tweet_id}.png"
             self.gcs_client.upload_file(str(local_path), blob_name)

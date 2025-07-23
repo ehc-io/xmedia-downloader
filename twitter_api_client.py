@@ -73,8 +73,7 @@ class TwitterAPIClient:
                 page.goto("https://x.com/home")
 
                 # Take a screenshot after loading the page
-                screenshot_path = Path("screenshots") / f"session_refresh_{int(time.time())}.png"
-                screenshot_path.parent.mkdir(parents=True, exist_ok=True)
+                screenshot_path = Path("/tmp") / f"session_refresh_{int(time.time())}.png"
                 page.screenshot(path=str(screenshot_path))
                 logger.info(f"Screenshot taken: {screenshot_path}")
                 

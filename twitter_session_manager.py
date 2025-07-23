@@ -5,6 +5,7 @@ import json
 import os
 import logging
 from pathlib import Path
+from datetime import datetime
 from playwright.sync_api import sync_playwright, Error as PlaywrightError
 from gcs_client import GCSClient
 from common import get_playwright_proxy_config
@@ -30,6 +31,31 @@ class TwitterSessionManager:
     def get_session_path(self) -> Path:
         """Return the full path to the session file."""
         return self.session_path
+
+    def _take_screenshot(self, page, filename: str) -> None:
+        """
+        Takes a screenshot and uploads it to GCS for debugging purposes.
+        Similar to the Node.js script's takeScreenshot function.
+        """
+        try:
+            # Create timestamp for filename
+            timestamp = datetime.utcnow().isoformat().replace(':', '-').replace('.', '-')
+            screenshot_filename = f"{timestamp}-{filename}.png"
+            
+            # Take screenshot to temporary file
+            temp_screenshot_path = Path("/tmp") / screenshot_filename
+            page.screenshot(path=str(temp_screenshot_path), full_page=True)
+            
+            # Upload to GCS
+            destination = f"screenshots/{screenshot_filename}"
+            self.gcs_client.upload_file(str(temp_screenshot_path), destination)
+            logger.info(f"Screenshot uploaded to gs://{self.gcs_client.bucket_name}/{destination}")
+            
+            # Clean up temporary file
+            temp_screenshot_path.unlink()
+            
+        except Exception as error:
+            logger.error(f"Failed to take or upload screenshot: {error}")
 
     def _run_refresh_script(self) -> bool:
         """
@@ -113,8 +139,12 @@ class TwitterSessionManager:
 
                         if is_logged_in:
                             logger.info("Playwright check: Session appears valid.")
+                            # Take screenshot of valid session for verification
+                            self._take_screenshot(page, 'session-validation-success')
                         else:
                             logger.warning(f"Playwright check: Session appears invalid (login indicator not found on x.com/home). Title: {page.title()}")
+                            # Take screenshot of invalid session for troubleshooting
+                            self._take_screenshot(page, 'session-validation-failed')
 
                         page.close()
                         context.close()
@@ -122,6 +152,12 @@ class TwitterSessionManager:
 
                     except PlaywrightError as e:
                          logger.error(f"Playwright error during session validation check: {e}")
+                         # Take screenshot on Playwright error for debugging
+                         try:
+                             self._take_screenshot(page, 'session-validation-playwright-error')
+                             logger.info('Screenshot taken due to Playwright error during session validation.')
+                         except Exception as screenshot_error:
+                             logger.error(f'Failed to take Playwright error screenshot: {screenshot_error}')
                          # Attempt to close gracefully
                          try: page.close()
                          except: pass
@@ -133,6 +169,13 @@ class TwitterSessionManager:
 
         except Exception as e:
             logger.error(f"Unexpected error during Playwright session validation: {e}")
+            # Take screenshot on unexpected error for debugging
+            try:
+                if 'page' in locals():
+                    self._take_screenshot(page, 'session-validation-unexpected-error')
+                    logger.info('Screenshot taken due to unexpected error during session validation.')
+            except Exception as screenshot_error:
+                logger.error(f'Failed to take unexpected error screenshot: {screenshot_error}')
             return False # Treat other errors as invalid
 
     def ensure_valid_session(self) -> bool:
