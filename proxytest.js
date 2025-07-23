@@ -14,10 +14,20 @@ const { chromium } = require('playwright');
 const fs = require('fs');
 const path = require('path');
 
+// GCS upload capability (optional - will work without it)
+let Storage;
+try {
+    Storage = require('@google-cloud/storage').Storage;
+} catch (e) {
+    // GCS library not available, will only save locally
+}
+
 // Configuration
 const TEST_URL = process.argv[2] || 'https://ifconfig.me';
 const PROXY = process.env.PROXY;
 const SCREENSHOTS_DIR = 'screenshots';
+const GCS_BUCKET_NAME = process.env.GCS_BUCKET_NAME;
+const UPLOAD_TO_GCS = process.env.UPLOAD_TO_GCS === 'true';
 
 // IP checking service URLs
 const IP_CHECK_URLS = [
@@ -87,12 +97,41 @@ function parseProxy(proxyString) {
     }
 }
 
+async function uploadToGCS(localPath, blobName) {
+    if (!Storage || !GCS_BUCKET_NAME || !UPLOAD_TO_GCS) {
+        return false;
+    }
+    
+    try {
+        const storage = new Storage();
+        const bucket = storage.bucket(GCS_BUCKET_NAME);
+        await bucket.upload(localPath, {
+            destination: blobName,
+        });
+        log(`  Uploaded to GCS: ${blobName}`, 'green');
+        return true;
+    } catch (error) {
+        log(`  Failed to upload to GCS: ${error.message}`, 'yellow');
+        return false;
+    }
+}
+
 async function takeScreenshot(page, filename) {
     ensureDirectoryExists(SCREENSHOTS_DIR);
-    const screenshotPath = path.join(SCREENSHOTS_DIR, `${getFormattedTimestamp()}-${filename}.png`);
-    await page.screenshot({ path: screenshotPath, fullPage: true });
-    log(`Screenshot saved: ${screenshotPath}`, 'magenta');
-    return screenshotPath;
+    const timestamp = getFormattedTimestamp();
+    const screenshotFilename = `${timestamp}-${filename}.png`;
+    const localPath = path.join(SCREENSHOTS_DIR, screenshotFilename);
+    
+    await page.screenshot({ path: localPath, fullPage: true });
+    log(`Screenshot saved locally: ${localPath}`, 'magenta');
+    
+    // Try to upload to GCS if configured
+    if (GCS_BUCKET_NAME && UPLOAD_TO_GCS) {
+        const gcsBlobName = `screenshots/proxy-test-${screenshotFilename}`;
+        await uploadToGCS(localPath, gcsBlobName);
+    }
+    
+    return localPath;
 }
 
 async function testProxy() {
@@ -103,6 +142,14 @@ async function testProxy() {
     log(`  Test URL: ${TEST_URL}`, 'blue');
     log(`  PROXY env: ${PROXY || 'Not set'}`, 'blue');
     log(`  Screenshot directory: ${SCREENSHOTS_DIR}`, 'blue');
+    
+    if (GCS_BUCKET_NAME) {
+        log(`  GCS Bucket: ${GCS_BUCKET_NAME}`, 'blue');
+        log(`  Upload to GCS: ${UPLOAD_TO_GCS ? 'Yes' : 'No (set UPLOAD_TO_GCS=true to enable)'}`, 'blue');
+        if (!Storage) {
+            log(`  ⚠️  GCS library not installed - screenshots will only be saved locally`, 'yellow');
+        }
+    }
     
     // Parse proxy configuration
     const proxyConfig = parseProxy(PROXY);
