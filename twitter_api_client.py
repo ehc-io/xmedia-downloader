@@ -8,6 +8,7 @@ import time
 # ---> FIX: Add urlparse needed for extract_media_urls_from_api_data <---
 from urllib.parse import urlparse
 from common import get_playwright_proxy_config, get_requests_proxy_config
+from gcs_client import GCSClient # ---> FIX: Import GCSClient <---
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ class TwitterAPIClient:
     def __init__(self, session_path: Path):
         self.session_path = session_path
         self.auth_tokens: Optional[Tuple[str, str, str]] = None # (auth_token, csrf_token, bearer_token)
+        self.gcs_client = GCSClient() # ---> FIX: Initialize GCSClient <---
 
     def _extract_auth_tokens(self) -> Optional[Tuple[str, str, str]]:
         """
@@ -73,9 +75,19 @@ class TwitterAPIClient:
                 page.goto("https://x.com/home")
 
                 # Take a screenshot after loading the page
-                screenshot_path = Path("/tmp") / f"session_refresh_{int(time.time())}.png"
-                page.screenshot(path=str(screenshot_path))
-                logger.info(f"Screenshot taken: {screenshot_path}")
+                screenshot_filename = f"session_refresh_{int(time.time())}.png"
+                local_screenshot_path = Path("/tmp") / screenshot_filename
+                page.screenshot(path=str(local_screenshot_path))
+                logger.info(f"Screenshot taken: {local_screenshot_path}")
+
+                # ---> FIX: Upload screenshot to GCS <---
+                if self.gcs_client:
+                    gcs_screenshot_path = f"screenshots/{screenshot_filename}"
+                    try:
+                        self.gcs_client.upload_file(str(local_screenshot_path), gcs_screenshot_path)
+                        logger.info(f"Screenshot uploaded to GCS at {gcs_screenshot_path}")
+                    except Exception as e:
+                        logger.error(f"Failed to upload screenshot to GCS: {e}")
                 
                 # Wait for more API calls to happen
                 logger.info("Waiting for API calls...")
