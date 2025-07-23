@@ -144,8 +144,8 @@ async function isSessionValid(context) {
   Logger.log('Verifying if session is valid...');
   const page = await context.newPage();
   try {
-    await page.goto("https://x.com/home");
-    await page.waitForTimeout(NETWORK_TIMEOUT);
+    await page.goto("https://x.com/home", { timeout: NETWORK_TIMEOUT });
+    await page.waitForTimeout(INTERACTION_TIMEOUT);
     
     // Use the same validation logic as Python script - check for compose button
     const composeButton = await page.querySelector('a[data-testid="SideNav_NewTweet_Button"]');
@@ -184,9 +184,14 @@ async function performLogin(context) {
   // Get credentials from environment variables
   const username = process.env.X_USERNAME;
   const password = process.env.X_PASSWORD;
+  const email = process.env.X_EMAIL;
   
   if (!username || !password) {
     throw new Error('X_USERNAME and X_PASSWORD environment variables must be set');
+  }
+  
+  if (!email) {
+    Logger.log('X_EMAIL environment variable not set. Email confirmation step will be skipped if encountered.');
   }
   
   const page = await context.newPage();
@@ -242,7 +247,51 @@ async function performLogin(context) {
     // Wait for a bit for the next page to load
     await page.waitForTimeout(INTERACTION_TIMEOUT);
 
-    // It's possible Twitter asks for a phone number or email to verify
+    // Check if email confirmation field appears (sometimes Twitter asks for email verification)
+    const emailConfirmationSelector = 'input[data-testid="ocfEnterTextTextInput"]';
+    const isEmailConfirmationVisible = await page.isVisible(emailConfirmationSelector);
+    
+    if (isEmailConfirmationVisible) {
+      Logger.log('Email confirmation field detected, attempting to fill it...');
+      
+      if (!email) {
+        Logger.error('Email confirmation field appeared but X_EMAIL environment variable is not set');
+        await takeScreenshot(page, 'email-confirmation-no-email');
+        throw new Error('Email confirmation required but X_EMAIL environment variable not set');
+      }
+      
+      // Fill email confirmation field
+      await page.fill(emailConfirmationSelector, email);
+      await page.waitForTimeout(INTERACTION_TIMEOUT);
+      Logger.log('Filled email confirmation field.');
+      
+      // Take screenshot before clicking email Next button
+      await takeScreenshot(page, 'before-email-next-click');
+      
+      // Click email Next button
+      const emailNextButtonSelector = 'button[data-testid="ocfEnterTextNextButton"]';
+      Logger.log('Waiting for email Next button...');
+      try {
+        await page.waitForSelector(emailNextButtonSelector, { state: 'visible', timeout: INTERACTION_TIMEOUT });
+      } catch (error) {
+        Logger.error('Timeout waiting for email Next button:', error);
+        await takeScreenshot(page, 'email-next-button-timeout');
+        throw error;
+      }
+      
+      Logger.log('Clicking email "Next" button...');
+      await page.click(emailNextButtonSelector);
+      Logger.log('Clicked email "Next" button.');
+      
+      // Screenshot after clicking email Next
+      await takeScreenshot(page, 'after-email-next-click');
+      
+      // Wait for the next page to load
+      await page.waitForTimeout(INTERACTION_TIMEOUT);
+    } else {
+      Logger.log('No email confirmation field detected, proceeding to password field...');
+    }
+
     // Wait for password field and fill it
     const passwordSelector = 'input[name="password"]';
     Logger.log('Waiting for password input field...');
@@ -274,7 +323,7 @@ async function performLogin(context) {
     await page.click(loginButtonSelector);
     
     // Wait for navigation to complete
-    await page.waitForNavigation({ waitUntil: 'networkidle', timeout: INTERACTION_TIMEOUT }).catch(() => {
+    await page.waitForNavigation({ waitUntil: 'networkidle', timeout: NETWORK_TIMEOUT }).catch(() => {
       Logger.log('Navigation timeout occurred, but continuing...');
     });
     
