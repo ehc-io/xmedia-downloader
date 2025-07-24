@@ -27,6 +27,22 @@ logging.getLogger().setLevel(log_level)
 for logger_name in ['twitter_session_manager', 'twitter_content_extractor', 'twitter_api_client', 'twitter_media_downloader']:
     logging.getLogger(logger_name).setLevel(log_level)
 
+
+class HealthCheckFilter(logging.Filter):
+    """Filter to exclude health check requests from logs."""
+    def filter(self, record):
+        # Filter out GET requests to /health endpoint
+        if hasattr(record, 'getMessage'):
+            message = record.getMessage()
+            if 'GET /health' in message and '200' in message:
+                return False
+        return True
+
+
+# Apply the filter to werkzeug logger (handles Flask request logging)
+werkzeug_logger = logging.getLogger('werkzeug')
+werkzeug_logger.addFilter(HealthCheckFilter())
+
 logger = logging.getLogger(__name__)
 
 # --- Import Core Components (after logging setup) ---
