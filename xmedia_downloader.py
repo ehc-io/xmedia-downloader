@@ -196,6 +196,12 @@ def refresh_session():
         return jsonify({"error": f"Failed to start session refresh: {str(e)}"}), 500
 
 
+@app.route('/health', methods=['GET'])
+def health_check():
+    """API endpoint for service health checking."""
+    return jsonify({"status": "healthy"}), 200
+
+
 @app.route('/session-status', methods=['GET'])
 def session_status():
     """API endpoint to check current session status."""
