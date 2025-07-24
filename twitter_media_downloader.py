@@ -29,10 +29,10 @@ class TwitterMediaDownloader:
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         })
 
-    def _generate_filename(self, tweet_details: dict, tweet_id: str, media_url: str, index: int) -> str:
+    def _generate_filename(self, tweet_details: dict, tweet_id: str, media_url: str, index: int, operation_id: str = None) -> str:
         """
         Generates a structured filename based on tweet metadata.
-        Format: YYYYMMDD_HHMMSS_<user_handle>_<tweet_id>_<index>.<extension>
+        Format: YYYYMMDD_HHMMSS_<user_handle>_<tweet_id>_<index>_<operation_id>.<extension>
         """
         user_handle = tweet_details.get('user_handle', 'unknown_user')
         # Use timestamp from tweet details (more accurate)
@@ -46,10 +46,15 @@ class TwitterMediaDownloader:
         if not file_extension:
             # Fallback for URLs without extensions (e.g., video URLs)
             file_extension = ".mp4" if "video" in media_url else ".jpg"
-            
-        return f"{date_str}_{user_handle}_{tweet_id}_{index + 1}{file_extension}"
+        
+        # Build filename with operation_id if provided
+        base_filename = f"{date_str}_{user_handle}_{tweet_id}_{index + 1}"
+        if operation_id:
+            base_filename += f"_{operation_id}"
+        
+        return f"{base_filename}{file_extension}"
 
-    def download_media_items(self, media_items: list, tweet_details: dict, tweet_id: str) -> list:
+    def download_media_items(self, media_items: list, tweet_details: dict, tweet_id: str, operation_id: str = None) -> list:
         """
         Downloads a list of media items.
 
@@ -57,6 +62,7 @@ class TwitterMediaDownloader:
             media_items: A list of dictionaries, each with a 'url' and 'type'.
             tweet_details: A dictionary with metadata like user handle and timestamp.
             tweet_id: The ID of the tweet.
+            operation_id: Optional operation ID to include in filenames.
 
         Returns:
             A list of paths to the downloaded files.
@@ -64,7 +70,7 @@ class TwitterMediaDownloader:
         downloaded_files = []
         for i, item in enumerate(media_items):
             url = item['url']
-            filename = self._generate_filename(tweet_details, tweet_id, url, i)
+            filename = self._generate_filename(tweet_details, tweet_id, url, i, operation_id)
             
             gcs_blob_name = f"media/{filename}"
 

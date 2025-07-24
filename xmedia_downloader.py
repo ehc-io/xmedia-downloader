@@ -12,6 +12,8 @@ import logging
 import os
 import sys
 import threading
+import string
+import random
 from pathlib import Path
 from flask import Flask, request, jsonify
 
@@ -69,13 +71,23 @@ def get_session_manager():
     return session_manager
 
 
-def process_tweet_download(url: str):
+def generate_operation_id() -> str:
+    """Generate a random 5-character alphanumeric string for operation tracking."""
+    characters = string.ascii_uppercase + string.digits
+    return ''.join(random.choice(characters) for _ in range(5))
+
+
+def process_tweet_download(url: str, operation_id: str = None):
     """
     Processes a single tweet URL to download its media.
     This function is designed to be run in a background thread.
+    
+    Args:
+        url: The Twitter URL to process
+        operation_id: Optional operation ID to include in filenames
     """
     try:
-        logger.info(f"--- Starting Download Process for URL: {url} ---")
+        logger.info(f"--- Starting Download Process for URL: {url} (Operation ID: {operation_id}) ---")
         
         # 1. Ensure a valid session exists before proceeding
         logger.info("--- Step 1: Validating Session ---")
@@ -123,7 +135,8 @@ def process_tweet_download(url: str):
             downloaded_files = downloader.download_media_items(
                 media_items=media_items_to_download,
                 tweet_details=tweet_details,
-                tweet_id=tweet_id
+                tweet_id=tweet_id,
+                operation_id=operation_id
             )
             
             if downloaded_files:
@@ -153,12 +166,19 @@ def extract_media():
         logger.warning(f"Invalid Twitter URL received: {url}")
         return jsonify({"error": f"Invalid Twitter/X post URL: {url}"}), 400
 
+    # Generate operation ID for this request
+    operation_id = generate_operation_id()
+    logger.info(f"Generated operation ID: {operation_id} for URL: {url}")
+
     # Run the download process in a background thread
-    download_thread = threading.Thread(target=process_tweet_download, args=(url,))
+    download_thread = threading.Thread(target=process_tweet_download, args=(url, operation_id))
     download_thread.start()
 
     logger.info(f"Request for URL '{url}' received and queued for processing.")
-    return jsonify({"message": "Request received. Media download process started."}), 202
+    return jsonify({
+        "message": "Request received. Media download process started.",
+        "operation_id": operation_id
+    }), 202
 
 
 def process_session_refresh():
